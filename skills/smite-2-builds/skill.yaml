@@ -1,5 +1,0 @@
-name: "smite_2_builds"
-title: "Smite 2 Build Builder"
-description: "Build one current-patch, role-specific Smite 2 build from recent top player match data on SmiteBrain, cross-checked against SmiteSource, for when the user asks for a god build."
-category: "Entertainment"
-include_in_prompt: true
