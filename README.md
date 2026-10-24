@@ -27,6 +27,8 @@ How your agent works with you day to day.
 | [identity-adaptation](skills/agent-workflow/identity-adaptation/) | Grow a durable, personal identity with your user over time: agent-owned identity files, a plain-words feedback contract, voice disciplines that keep replies human, and a periodic self-review for drift. | Nothing extra |
 | [external-review-intake](skills/agent-workflow/external-review-intake/) | Verify claims from relayed outside reviews (other AIs, human reviewers, audits) against the source before acting, and fold in only what the user approves. | Nothing extra |
 | [scrub-before-sharing](skills/agent-workflow/scrub-before-sharing/) | Prepare a file, folder, skill, or connector bundle for someone else by stripping private data from every file in it, scripts and configs included, and verifying the clean copy before it is shared. | Nothing extra |
+| [verify-before-shipping](skills/agent-workflow/verify-before-shipping/) | Require runnable evidence before claiming any script, skill, config or document works: a smoke-test pass over edge-case inputs, a doc-versus-behaviour cross-check, and full-output gate runs. | Nothing extra |
+| [memory-hygiene](skills/agent-workflow/memory-hygiene/) | Audit long-term memory files on a cadence: merge duplicates, retire stale threads, resolve contradicted facts, propagate corrections, and hold a density ceiling. | Python script included |
 
 ### [Finance](skills/finance/)
 
@@ -39,6 +41,7 @@ How your agent works with you day to day.
 | Skill | What it does | Needs |
 | --- | --- | --- |
 | [amazon-search](skills/shopping/amazon-search/) | Real Amazon listings with live search-page prices from any regional storefront (amazon.ca, amazon.com, amazon.co.uk, amazon.de, and more) through a local Camoufox browser. Search only: no login, no cart, no checkout. | Camoufox setup; built for a Muse VM, so its paths and setup notes are Muse-specific |
+| [price-history-check](skills/shopping/price-history-check/) | Check whether an Amazon price is actually a deal: cross-check an ASIN against CamelCamelCamel price history and other retailers before calling a sale price good. | Nothing extra |
 
 ### [Games](skills/games/)
 

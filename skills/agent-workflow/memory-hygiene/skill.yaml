@@ -1,0 +1,5 @@
+name: "memory_hygiene"
+title: "Memory Hygiene"
+description: "Audit an agent's long-term memory files on a cadence: merge duplicates, retire stale threads, resolve contradicted facts, propagate corrections, and hold the curated file to a density ceiling. Use when memory files grow, contradict themselves, or on a scheduled review."
+category: "Agent Workflow"
+include_in_prompt: true

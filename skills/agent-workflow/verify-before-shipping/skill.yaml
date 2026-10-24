@@ -1,0 +1,5 @@
+name: "verify_before_shipping"
+title: "Verify Before Shipping"
+description: "Require runnable evidence before claiming any script, skill, config or document works: a smoke-test pass over edge-case inputs, a doc-versus-behaviour cross-check, and full-output gate runs. Use before stamping anything verified, done, fixed or shipped, before reporting a delegated worker's green result as your own, and whenever a change touches code that other instructions depend on."
+category: "Agent Workflow"
+include_in_prompt: true

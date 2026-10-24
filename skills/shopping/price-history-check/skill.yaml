@@ -1,0 +1,5 @@
+name: "price_history_check"
+title: "Price History Check"
+description: "Check whether an Amazon price is actually a deal: cross-check an ASIN or product against CamelCamelCamel price history and other retailers before calling a sale price good. Use when the user asks if a price is a deal, whether to buy now or wait, or wants a price cross-check."
+category: "Shopping"
+include_in_prompt: true
