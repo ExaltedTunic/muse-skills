@@ -1,0 +1,5 @@
+name: "fitness_coach"
+title: "Fitness Coach"
+description: "Build and run a research and results driven workout program: interview the user thoroughly before writing anything, design the program from their goals, schedule, equipment and constraints, then coach it week to week from their logged results. Use whenever the user wants a training program, coaching, progression advice, or nutrition targets tied to training."
+category: "Health & Fitness"
+include_in_prompt: true

@@ -49,6 +49,12 @@ How your agent works with you day to day.
 | --- | --- | --- |
 | [smite-2-builds](skills/games/smite-2-builds/) | One current-patch, role-specific Smite 2 build from recent top-player match data on SmiteBrain, cross-checked against SmiteSource, with a hard gate against Smite 1 items: live data or nothing. | Python script included. Script is portable; the presentation steps name Muse's widget and browser tools, adapt those on other platforms |
 
+### [Fitness](skills/fitness/)
+
+| Skill | What it does | Needs |
+| --- | --- | --- |
+| [fitness-coach](skills/fitness/fitness-coach/) | Build and run a research and results driven workout program: a thorough intake interview before anything is written, a program designed from the user's goals, schedule, equipment and constraints, then week-to-week coaching from their logged results. | Nothing extra |
+
 ## Portability
 
 Every `SKILL.md` carries YAML frontmatter (name, description) so other agent platforms can load these alongside the `skill.yaml`. Most skills are plain method and travel as-is. The Muse-specific pieces are named where they occur: financial-audit's optional Plaid step, amazon-search's VM paths and proxy-CA setup, smite-2-builds' widget presentation, and identity-adaptation's assumption that the platform auto-loads the agent's `SOUL.md` and `IDENTITY.md` files. On another platform, adapt or skip those named pieces; the rest of each workflow stands on its own.
