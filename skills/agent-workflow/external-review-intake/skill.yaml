@@ -1,0 +1,5 @@
+name: "external_review_intake"
+title: "External Review Intake"
+description: "Verify claims from relayed outside reviews (other AIs, human reviewers, audits) against the source before acting: split into claims, check mechanically, report verified/corrected/unverifiable, and fold in only what the user approves."
+category: "Workflow"
+include_in_prompt: true

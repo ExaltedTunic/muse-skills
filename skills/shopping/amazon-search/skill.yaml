@@ -1,0 +1,5 @@
+name: "amazon_search"
+title: "Amazon Search (Camoufox)"
+description: "Get real Amazon.ca listings with live search-page prices through the local Camoufox browser, for when the user wants Amazon-specific results or a price cross-check."
+category: "Shopping"
+include_in_prompt: true
