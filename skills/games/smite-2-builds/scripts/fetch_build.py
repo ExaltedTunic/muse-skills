@@ -23,6 +23,16 @@ import sys
 import urllib.request
 from collections import Counter
 
+# Output uses characters like the middle dot and arrows; on a console
+# with a legacy encoding (a Windows code page, say) printing them can
+# crash outright, so pin UTF-8 with replacement where the stream
+# allows it.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 BASE = "https://smitebrain.com"
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
 

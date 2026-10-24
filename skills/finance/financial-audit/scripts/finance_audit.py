@@ -3,7 +3,7 @@
 a bank, it only reads files the user supplies.
 
 Usage:
-    finance_audit.py ingest-csv statement.csv [--account "TD Chequing"] [--out txns.jsonl] [--date-format DMY|MDY]
+    finance_audit.py ingest-csv statement.csv [--account "TD Chequing"] [--out txns.jsonl] [--date-format DMY|MDY] [--invert-amounts]
     finance_audit.py ingest-text statement.txt [--account "TD Chequing"] [--year 2026] [--out txns.jsonl] [--date-format DMY|MDY]
     finance_audit.py ingest-plaid plaid-transactions.json [--out txns.jsonl]
     finance_audit.py audit txns.jsonl [more.jsonl ...] --config config.json [--out report.md] [--json-out summary.json]
@@ -133,7 +133,7 @@ def _cell(row, idx):
     return row[idx]
 
 
-def ingest_csv(path, account, date_format=None):
+def ingest_csv(path, account, date_format=None, invert_amounts=False):
     with open(path, newline="", encoding="utf-8-sig") as fh:
         rows = list(csv.reader(fh))
     header_idx = None
@@ -183,6 +183,8 @@ def ingest_csv(path, account, date_format=None):
                     amount = -abs(amount)
         else:
             raise SystemExit("error: no Debit/Credit or Amount column found")
+        if invert_amounts:
+            amount = -amount
         description = _cell(row, desc_i).strip() if desc_i is not None else ""
         out.append({
             "date": day.isoformat(), "description": description,
@@ -352,6 +354,23 @@ def cadence_label(days):
     return "irregular"
 
 
+_LONG_DIGITS = re.compile(r"\d{7,}")
+_GROUPED_DIGITS = re.compile(r"(?:\d{3,4}[ -]){2,}\d{2,4}")
+
+
+def mask_text(text):
+    """Mask identifier-shaped digit runs in a statement description
+    before it reaches a report or JSON summary: long account/card
+    numbers and grouped sequences (spaced card numbers, phone
+    numbers). Keeps the last two digits so rows stay distinguishable.
+    The stored JSONL keeps the raw description for reconciliation;
+    masking is an output-layer rule."""
+    if not text:
+        return text
+    text = _GROUPED_DIGITS.sub("***", str(text))
+    return _LONG_DIGITS.sub(lambda m: "***" + m.group(0)[-2:], text)
+
+
 def audit(txns, config):
     txns = sorted(txns, key=lambda t: t["date"])
     as_of = date.fromisoformat(txns[-1]["date"]) if txns else date.today()
@@ -481,6 +500,17 @@ def audit(txns, config):
                                     "spent": total, "budget": budget,
                                     "over": round(total - budget, 2)})
 
+    # Output-layer masking: everything below that carries statement text
+    # gets its identifier-shaped digits masked before it can reach a
+    # report or the JSON summary.
+    for _r in recurring + frequent_variable:
+        _r["merchant"] = mask_text(_r["merchant"])
+    for _c in creep:
+        _c["merchant"] = mask_text(_c["merchant"])
+    duplicates = [{**d, "merchant": mask_text(d["merchant"])}
+                  for d in duplicates]
+    large = [{**x, "description": mask_text(x["description"])} for x in large]
+
     return {
         "as_of": as_of.isoformat(),
         "accounts": sorted({t["account"] for t in txns if t.get("account")}),
@@ -489,7 +519,7 @@ def audit(txns, config):
         "monthly": {m: {k: round(v, 2) for k, v in vals.items()}
                     for m, vals in sorted(monthly.items())},
         "fees_total": round(sum(-t["amount"] for t in fees), 2),
-        "fees": [{"date": t["date"], "description": t["description"],
+        "fees": [{"date": t["date"], "description": mask_text(t["description"]),
                   "amount": t["amount"]} for t in fees],
         "recurring": recurring, "frequent_variable": frequent_variable,
         "price_increases": creep,
@@ -611,6 +641,13 @@ def main():
     p_csv.add_argument("--date-format", choices=["DMY", "MDY"], default=None,
                        help="Slash-date convention for this file; default "
                             "infers it per file from unambiguous dates")
+    p_csv.add_argument("--invert-amounts", action="store_true",
+                       help="Flip the sign of every amount in a single-"
+                            "Amount-column file. For card exports that "
+                            "print charges as positive numbers (some Amex "
+                            "and card-issuer CSVs), where the bank-account "
+                            "convention this tool assumes would read "
+                            "purchases as income")
 
     p_text = sub.add_parser("ingest-text")
     p_text.add_argument("file")
@@ -633,8 +670,8 @@ def main():
 
     args = parser.parse_args()
     if args.command == "ingest-csv":
-        write_jsonl(ingest_csv(args.file, args.account, args.date_format),
-                    args.out)
+        write_jsonl(ingest_csv(args.file, args.account, args.date_format,
+                               args.invert_amounts), args.out)
     elif args.command == "ingest-text":
         write_jsonl(ingest_text(args.file, args.account, args.year,
                                 args.date_format), args.out)

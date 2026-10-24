@@ -18,6 +18,7 @@ These rules are part of the skill's design, not one user's preference. They appl
 
 - **Search only. Anonymous only.** Never log in, never import or use cookies or a saved Amazon session, never add to cart, never check out, and never build those capabilities into the tool.
 - If a request needs the user's Amazon account (order status, account prices, Subscribe & Save management), stop and say so. Do not improvise a login path. Account features belong in a different tool, not in this one.
+- If the user asks you to buy, order, or add a result to a cart ("buy the second one"), decline in one line, restate that this tool is search-only, and give them the product URL so they can check out themselves in seconds. Do not negotiate the scope rule or quietly route the purchase through a different tool without saying that is what you are doing.
 - **Human scale only.** Amazon's Conditions of Use prohibit robots and data extraction tools, and Camoufox works by getting past Amazon's bot detection. Occasional single searches keep that exposure small. Bulk use does not.
 
 ## Run it
@@ -45,6 +46,7 @@ These rules are part of the skill's design, not one user's preference. They appl
 - Exit code 1 with "Amazon served a block/captcha page": the wall won this round. Report it plainly, fall back to the `shopping` skill / Meta Catalog, and do not hammer retries (one retry after a real pause at most). amazon.com serves this to agent-class traffic outright (its page says continued access by an "unauthorized AI agent" violates the Conditions of Use); from a datacenter VM, .com is effectively closed, while .ca works.
 - Exit code 1 with "Amazon page load timed out with no results rendered": navigation stalled and nothing rendered. amazon.co.uk and amazon.de do this intermittently from a datacenter VM (the same query may load fine minutes later). One retry is reasonable; report it as a load failure, never as "no results found."
 - Prices missing on amazon.de: verified 2026-10-24, .de search cards (sponsored and organic) render no price text at all in anonymous sessions, so results come back title, rating and URL only. That is the storefront withholding the price slot for this session class, not a parser miss. For a .de price, open the product page itself.
+- Launch fails with "Failed to launch the browser process" and the profile path in the error: the persistent profile is locked by another search still running, or by an orphaned browser from a crashed run (the profile allows exactly one browser at a time, which the one-search-at-a-time rule already assumes). Check for a running camoufox process, let it finish or kill the orphan, then retry.
 - `SEC_ERROR_UNKNOWN_ISSUER` or other TLS failures: the browser profile's proxy-CA seed is stale. Regenerate the profile, then retry once:
 
 ```
@@ -69,7 +71,7 @@ rm -rf ~/workspace/tools/camoufox/tmp/*
 ```
 
 - The TMPDIR override is a setup step only. Muse VMs have a `/tmp` too small for the 1.3 GB browser download, so setup redirects temporary files into the workspace. Normal searches run without it. Skip the override only when `/tmp` is known to be large, and always clear `~/workspace/tools/camoufox/tmp/*` afterward so leftover archive artifacts do not eat workspace storage.
-- `make_profile.py` seeds the browser profile with the sandbox proxy CA from `/run/hatch/egress-tls/hatch-egress-ca.pem`, which Muse VMs need for TLS. That CA rotates when the runtime redeploys, so re-run the script whenever `SEC_ERROR_UNKNOWN_ISSUER` or another TLS error appears.
+- `make_profile.py` seeds the browser profile with the sandbox proxy CA from `/run/hatch/egress-tls/hatch-egress-ca.pem`, which Muse VMs need for TLS. That CA rotates when the runtime redeploys, so re-run the script whenever `SEC_ERROR_UNKNOWN_ISSUER` or another TLS error appears. The script drives the Mozilla NSS `certutil` (Linux and macOS); the `certutil.exe` that ships with Windows is a different Microsoft tool and cannot do this job, so on Windows seed the CA through Firefox's enterprise policy or certificate settings instead.
 - The smoke test passing (example.com title, spoofed Firefox user agent, webdriver false) means setup is done. Then run a real search as the final check.
 - On a non-Muse machine the profile seeding and TMPDIR steps may be unnecessary. The hard scope rules apply in full regardless of platform.
 

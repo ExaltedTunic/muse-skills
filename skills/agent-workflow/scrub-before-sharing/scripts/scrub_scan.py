@@ -20,10 +20,11 @@ PATTERNS = {
     "email address": re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
     "phone number": re.compile(r"(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]\d{3}[\s.-]\d{4}\b"),
     "Canadian postal code": re.compile(r"\b[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d\b"),
-    "US ZIP code": re.compile(r"\b\d{5}(?:-\d{4})\b"),
+    "US ZIP code": re.compile(r"\b\d{5}(?:-\d{4})?\b"),
     "api key shape": re.compile(r"\b(?:sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})\b"),
     "private key block": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
-    "home path": re.compile(r"(?:/home/|/Users/)[A-Za-z0-9._-]+|C:\\\\Users\\\\[A-Za-z0-9._-]+"),
+    "home path": re.compile(r"(?:/home/|/Users/|[A-Za-z]:[\\/]+Users[\\/]+)[A-Za-z0-9._-]+", re.IGNORECASE),
+    "IP address": re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
 }
 
 

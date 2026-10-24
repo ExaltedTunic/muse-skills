@@ -2,6 +2,18 @@
 
 What is new in the collection, newest first. Friends: this is the page to check after an update drops.
 
+## 2026-10-24: second external review fixes
+
+Fixes from the Argon 4 and Opus 5.5 review of 227a9dc, each verified against the source before and after:
+
+- scrub-before-sharing: the bundled scanner's home-path pattern was double-escaped, so ordinary Windows paths (C:\Users\name) never matched, and its US ZIP pattern only matched ZIP+4, never a plain 5-digit ZIP. Both patterns are fixed and covered by fixture tests; an IP-address shape was added. (Both bugs were introduced with the scanner in the previous entry, one day earlier.)
+- financial-audit: statement descriptions are now masked at the output layer (long digit runs and grouped digit sequences) before they reach the report or the JSON summary, and ingest-csv gains `--invert-amounts` for card exports that print charges as positive numbers. The skill text now leads audit presentations with a three-bullet pulse (net position, biggest finding, deadline at risk) before the tables.
+- amazon-search: profile seeding aborts at the actual failure when the CA cannot be added, instead of letting every later search fail with a misleading TLS error. The skill text gains the profile-lock failure signature and remedy, the note that Windows' certutil.exe is a different tool from the Mozilla NSS certutil the script drives, and a one-line deflection for buy requests under the search-only scope rule.
+- smite-2-builds: the script pins its output streams to UTF-8 with replacement, so its arrows and separators cannot crash it on a legacy-encoding console.
+- identity-adaptation: three additions from the review: correct in small steps rather than swinging to the opposite extreme on tone feedback; protected load-bearing lines (honesty, privacy, safety boundaries) are never deleted or softened while tuning identity files; and the weekly drift review needs a trigger outside the model's memory (a scheduled job or session-start checklist), not just an intention in the file.
+
+Two review claims did not survive verification and were not acted on: the smite skill-order extraction no longer uses the wide text window described (it was replaced in the previous entry; the review cited the new code's lines while describing the old behaviour), and there is no Chang'e slug defect (the apostrophe handling is correct; the data source simply carries no entry for that god).
+
 ## 2026-10-24: external review fixes and portability pass
 
 Fixes from a full external review of the d512960 tree, each verified against the source before and after:
