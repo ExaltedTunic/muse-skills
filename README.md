@@ -2,7 +2,7 @@
 
 Custom skills for Muse personal AI agents, built and tested in daily use and shared with friends. A living collection: new skills land here as they are built, and existing ones get updated in place as they improve.
 
-Skills are organized by purpose under `skills/`: [agent workflow](skills/agent-workflow/), [finance](skills/finance/), [shopping](skills/shopping/), and [games](skills/games/). Each purpose folder has its own index page.
+Skills are organized by purpose under `skills/`: [agent workflow](skills/agent-workflow/), [finance](skills/finance/), [shopping](skills/shopping/), [games](skills/games/), and [fitness](skills/fitness/). Each purpose folder has its own index page.
 
 Every skill in this repo has passed a whole-folder privacy scrub before publishing. Personal skills and third-party skills are not mirrored here; where a skill builds on someone else's work, it links upstream instead.
 

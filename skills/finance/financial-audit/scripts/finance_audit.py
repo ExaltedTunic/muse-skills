@@ -354,8 +354,8 @@ def cadence_label(days):
     return "irregular"
 
 
-_LONG_DIGITS = re.compile(r"\d{7,}")
-_GROUPED_DIGITS = re.compile(r"(?:\d{3,4}[ -]){2,}\d{2,4}")
+_LONG_DIGITS = re.compile(r"\d{6,}")
+_GROUPED_DIGITS = re.compile(r"(?:\d{3}-\d{2}-\d{4}|\d{5}-\d{3}|(?:\d{3,4}[ -]){2,}\d{2,4})")
 
 
 def mask_text(text):

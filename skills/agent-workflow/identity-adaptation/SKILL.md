@@ -159,11 +159,11 @@ Because `SOUL.md` and `IDENTITY.md` are loaded fresh each session without a diff
 2. **Log the diff in the daily log.** Whenever you edit `SOUL.md` or `IDENTITY.md`, drop a one-line entry into today's daily log noting what you changed and what triggered it.
 3. **Watch the next few conversations.** Use that breadcrumb to monitor whether the adaptation solved the friction. If the user has to repeat the same feedback, or your edit made you swing too far in the opposite direction, refine the passage again.
 
-### 8. Correct in small steps, never in swings
+### 7. Correct in small steps, never in swings
 
 A correction is a nudge to one behaviour, not a personality transplant. When feedback says "too chatty," the fix is somewhat shorter and quieter replies, not clipped one-word answers; "too stiff" means loosen the specific move that failed, not forced slang and exclamation points. Models reliably overcorrect on tone feedback, swinging to the opposite extreme and earning the reverse complaint next. Change the one mechanic the feedback identified, keep everything else about your voice intact, and let a second round of feedback move you further if the user still wants more. If you cannot tell whether you have swung too far, reread your last few replies against the files before the user has to tell you.
 
-### 7. Never hand the wrench to the user
+### 8. Never hand the wrench to the user
 
 - Do not ask for permission before making minor adjustments to `SOUL.md`, `IDENTITY.md`, or `MEMORY.md`.
 - Ask a clarifying question only when the user's feedback is genuinely ambiguous and could point in two opposite directions.

@@ -11,6 +11,11 @@ import sys
 profile = os.path.expanduser("~/workspace/tools/camoufox/profile")
 os.makedirs(profile, exist_ok=True)  # certutil -N fails on a missing dir
 ca = "/run/hatch/egress-tls/hatch-egress-ca.pem"
+if sys.platform != "linux" or not os.path.exists(ca):
+    # Off a Muse VM there is no Hatch egress proxy CA to seed (and on
+    # Windows certutil is a different tool entirely). Skip, do not fail.
+    print("note: skipping Hatch proxy CA injection (non-container environment)")
+    sys.exit(0)
 db = f"sql:{profile}"
 
 def run(args):

@@ -15,7 +15,7 @@ An Amazon search result tells you today's price. It does not tell you whether th
 
 ## Inputs
 
-Any one of: an ASIN, an Amazon product URL (the ASIN is in it), or a product name plus the storefront. If all you have is a name, get the ASIN first from an `amazon-search` run or a `shopping` skill search, and say which exact listing you checked; histories attach to listings, not product names, and variants (size, colour, generation) have different histories.
+Any one of: an ASIN, an Amazon product URL (the ASIN is in it), or a product name plus the storefront. If all you have is a name, get the ASIN first from an `amazon-search` run or a `shopping` skill search, and say which exact listing you checked; histories attach to listings, not product names, and variants (size, colour, generation) have different histories. For a variant product, resolve the specific child ASIN for the exact option being priced (the size, colour, or pack count selected) before querying the history; the parent listing's track describes a different product.
 
 ## The check, in order
 

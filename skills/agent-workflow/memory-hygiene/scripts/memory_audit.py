@@ -22,20 +22,29 @@ def normalized(line):
 def main():
     parser = argparse.ArgumentParser(description="Memory file shape report")
     parser.add_argument("files", nargs="+")
-    parser.add_argument("--dup-min-len", type=int, default=40,
+    parser.add_argument("--dup-min-len", type=int, default=15,
                         help="Ignore lines shorter than this when hunting "
                              "duplicates (short lines repeat innocently)")
     args = parser.parse_args()
 
     for path in args.files:
         try:
-            text = open(path, encoding="utf-8").read()
+            text = open(path, encoding="utf-8", errors="replace").read()
         except OSError as e:
             print(f"{path}: cannot read ({e})", file=sys.stderr)
             continue
         lines = text.splitlines()
-        sections = [l.lstrip("# ").strip() for l in lines
-                    if l.startswith("## ") or l.startswith("# ")]
+        sections = []
+        in_fence = False
+        for l in lines:
+            if l.strip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
+            m = re.match(r"^#{1,6}\s+(.+)$", l)
+            if m:
+                sections.append(m.group(1).strip())
         print(f"== {path}")
         print(f"   {len(lines)} lines, {len(text.split())} words, "
               f"{len(sections)} sections")

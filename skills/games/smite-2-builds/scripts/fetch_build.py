@@ -180,6 +180,29 @@ def primary_role(builds):
     return counts.most_common(1)[0][0] if counts else None
 
 
+_TIER_CACHE = {}
+
+
+def item_tier(slug):
+    """Tier string ('Tier 3', ...) for an item slug from its SmiteBrain
+    page, or None when it cannot be determined. Cached per process."""
+    if slug in _TIER_CACHE:
+        return _TIER_CACHE[slug]
+    tier = None
+    try:
+        payload = json.loads(fetch(f"{BASE}/items/{slug}/__data.json"))
+        for node in payload.get("nodes", []):
+            if isinstance(node, dict) and node.get("type") == "data":
+                decoded = unflatten(node["data"])
+                if isinstance(decoded, dict) and isinstance(decoded.get("item"), dict):
+                    tier = decoded["item"].get("tier")
+                    break
+    except Exception:
+        tier = None
+    _TIER_CACHE[slug] = tier
+    return tier
+
+
 def aggregate(builds, role):
     starter_forms = {}
     starter_families = Counter()
@@ -248,6 +271,14 @@ def aggregate(builds, role):
         view["count"] = count
         view["avg_slot"] = round(sum(item_positions[name]) / len(item_positions[name]), 1)
         ordered.append(view)
+    # Match data records the items held at match end, so unfinished
+    # Tier 1/2 components show up in final builds (e.g. a Skeggox that
+    # never got completed). A recommended build is made of completed
+    # items only: drop known components from the core and flex, and
+    # backfill from them only if fewer than six completed items exist.
+    completed = [v for v in ordered if item_tier(v["slug"]) not in ("Tier 1", "Tier 2")]
+    components = [v for v in ordered if item_tier(v["slug"]) in ("Tier 1", "Tier 2")]
+    ordered = completed + components
     # A build always fills all six slots: the six most played distinct
     # items, in typical buy order. Anything past the six is a flex swap.
     core = sorted(ordered[:6], key=lambda v: v["avg_slot"])
@@ -261,6 +292,12 @@ def aggregate(builds, role):
         "core": core,
         "flex": flex,
     }
+
+
+def god_title(name: str) -> str:
+    """Title-case a god name without mangling apostrophes inside a word:
+    "chang'e" -> "Chang'e" (str.title() would give "Chang'E")."""
+    return name.strip().lower().title().replace("'E", "'e").replace("'S", "'s")
 
 
 def fetch_skills(god_display, role):
@@ -296,7 +333,7 @@ def fetch_skills(god_display, role):
 
     try:
         html = fetch("https://smitesource.com/builds?god="
-                     + urllib.parse.quote(god_display.strip().title()))
+                     + urllib.parse.quote(god_title(god_display)))
     except Exception:
         return None
     text = html.replace('\\"', '"').replace("\\\\", "\\")

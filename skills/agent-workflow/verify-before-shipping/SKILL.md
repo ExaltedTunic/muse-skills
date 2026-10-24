@@ -17,6 +17,8 @@ A claim is a test result, not an intention. Before you say something works, is f
 - Before reporting a delegated worker's or another session's success as fact. Their green is a claim like any other; re-run the decisive gate yourself before you repeat it.
 - After any change to code that documentation describes, or documentation that code is supposed to follow. The two drift apart silently; the drift is the bug factory.
 
+Cosmetic-only edits (a typo in a comment, wording in prose no command depends on) do not need the full matrix; a careful read-back is the proportionate check. Anything that changes behaviour, output, or a documented claim gets the full pass.
+
 ## The smoke matrix
 
 Run the thing, not a reading of the thing. For a script or tool, cover at least:
