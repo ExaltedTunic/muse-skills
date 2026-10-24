@@ -32,19 +32,23 @@ How your agent works with you day to day.
 
 | Skill | What it does | Needs |
 | --- | --- | --- |
-| [financial-audit](skills/finance/financial-audit/) | Read-only audit of bank statements (CSV, PDF, or screenshots): cash flow, recurring bills, subscription price creep, fees, and deferred-interest deadlines. Never moves money. Private figures live in your own config outside the skill folder. | Python script included; example config included |
+| [financial-audit](skills/finance/financial-audit/) | Read-only audit of bank statements (CSV, PDF, or screenshots): cash flow, recurring bills, subscription price creep, fees, and deferred-interest deadlines. Never moves money. Private figures live in your own config outside the skill folder. | Python script included; example config included. Statement ingest is portable; the optional Plaid step is Muse-specific, skip it elsewhere |
 
 ### [Shopping](skills/shopping/)
 
 | Skill | What it does | Needs |
 | --- | --- | --- |
-| [amazon-search](skills/shopping/amazon-search/) | Real Amazon.ca listings with live search-page prices through a local Camoufox browser. Search only: no login, no cart, no checkout. | Camoufox setup; built for a Muse VM, so its paths and setup notes are Muse-specific |
+| [amazon-search](skills/shopping/amazon-search/) | Real Amazon listings with live search-page prices from any regional storefront (amazon.ca, amazon.com, amazon.co.uk, amazon.de, and more) through a local Camoufox browser. Search only: no login, no cart, no checkout. | Camoufox setup; built for a Muse VM, so its paths and setup notes are Muse-specific |
 
 ### [Games](skills/games/)
 
 | Skill | What it does | Needs |
 | --- | --- | --- |
-| [smite-2-builds](skills/games/smite-2-builds/) | One current-patch, role-specific Smite 2 build from recent top-player match data on SmiteBrain, cross-checked against SmiteSource, with a hard gate against Smite 1 items: live data or nothing. | Python script included |
+| [smite-2-builds](skills/games/smite-2-builds/) | One current-patch, role-specific Smite 2 build from recent top-player match data on SmiteBrain, cross-checked against SmiteSource, with a hard gate against Smite 1 items: live data or nothing. | Python script included. Script is portable; the presentation steps name Muse's widget and browser tools, adapt those on other platforms |
+
+## Portability
+
+Every `SKILL.md` carries YAML frontmatter (name, description) so other agent platforms can load these alongside the `skill.yaml`. Most skills are plain method and travel as-is. The Muse-specific pieces are named where they occur: financial-audit's optional Plaid step, amazon-search's VM paths and proxy-CA setup, smite-2-builds' widget presentation, and identity-adaptation's assumption that the platform auto-loads the agent's `SOUL.md` and `IDENTITY.md` files. On another platform, adapt or skip those named pieces; the rest of each workflow stands on its own.
 
 ## Sharing back
 

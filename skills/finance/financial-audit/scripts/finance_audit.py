@@ -3,7 +3,8 @@
 a bank, it only reads files the user supplies.
 
 Usage:
-    finance_audit.py ingest-csv statement.csv [--bank auto] [--account "TD Chequing"] [--out txns.jsonl]
+    finance_audit.py ingest-csv statement.csv [--account "TD Chequing"] [--out txns.jsonl] [--date-format DMY|MDY]
+    finance_audit.py ingest-text statement.txt [--account "TD Chequing"] [--year 2026] [--out txns.jsonl] [--date-format DMY|MDY]
     finance_audit.py ingest-plaid plaid-transactions.json [--out txns.jsonl]
     finance_audit.py audit txns.jsonl [more.jsonl ...] --config config.json [--out report.md] [--json-out summary.json]
 
@@ -50,13 +51,48 @@ STOP_TOKENS = {"INC", "LTD", "THE", "PURCHASE", "POS", "DEBIT", "VISA",
                "MASTERCARD", "WWW", "COM", "STORE", "PAYMENT", "INTERAC"}
 
 
-def parse_date(text):
+def parse_date(text, date_format=None):
+    """Parse a statement date. Slash dates are ambiguous (02/10/2026 is
+    Feb 10 in MDY and Oct 2 in DMY), so callers that read a whole file
+    first infer the file's convention with detect_slash_format and pass
+    it as date_format ("DMY" or "MDY"); a matching format is tried first.
+    Without a hint the historical DATE_FORMATS order applies."""
     text = (text or "").strip()
-    for fmt in DATE_FORMATS:
+    formats = list(DATE_FORMATS)
+    hinted = {"DMY": "%d/%m/%Y", "MDY": "%m/%d/%Y"}.get(
+        (date_format or "").upper())
+    if hinted and hinted in formats:
+        formats.remove(hinted)
+        formats.insert(0, hinted)
+    for fmt in formats:
         try:
             return datetime.strptime(text, fmt).date()
         except ValueError:
             continue
+    return None
+
+
+def detect_slash_format(values):
+    """Infer DMY vs MDY for one file from its slash dates: a component
+    above 12 settles it. Returns "DMY", "MDY", or None when every date
+    in the file is ambiguous."""
+    saw_dmy = saw_mdy = False
+    for value in values:
+        parts = (value or "").strip().split("/")
+        if len(parts) != 3:
+            continue
+        try:
+            first, second = int(parts[0]), int(parts[1])
+        except ValueError:
+            continue
+        if first > 12:
+            saw_dmy = True
+        if second > 12:
+            saw_mdy = True
+    if saw_dmy and not saw_mdy:
+        return "DMY"
+    if saw_mdy and not saw_dmy:
+        return "MDY"
     return None
 
 
@@ -90,7 +126,14 @@ def find_col(headers, *needles):
     return None
 
 
-def ingest_csv(path, account):
+def _cell(row, idx):
+    """Ragged-row safe cell access: short rows read as empty, not IndexError."""
+    if idx is None or idx >= len(row):
+        return ""
+    return row[idx]
+
+
+def ingest_csv(path, account, date_format=None):
     with open(path, newline="", encoding="utf-8-sig") as fh:
         rows = list(csv.reader(fh))
     header_idx = None
@@ -111,37 +154,40 @@ def ingest_csv(path, account):
     amount_i = find_col(headers, "amount")
     type_i = find_col(headers, "type")
     balance_i = find_col(headers, "balance")
+    if not date_format:
+        date_format = detect_slash_format(
+            _cell(r, date_i) for r in rows[header_idx + 1:])
     out, skipped = [], 0
     for row in rows[header_idx + 1:]:
         if len(row) <= (date_i or 0) or not row[date_i].strip():
             continue
-        day = parse_date(row[date_i])
+        day = parse_date(row[date_i], date_format)
         if day is None:
             skipped += 1
             continue
         if debit_i is not None or credit_i is not None:
-            debit = parse_amount(row[debit_i]) if debit_i is not None else None
-            credit = parse_amount(row[credit_i]) if credit_i is not None else None
+            debit = parse_amount(_cell(row, debit_i)) if debit_i is not None else None
+            credit = parse_amount(_cell(row, credit_i)) if credit_i is not None else None
             if debit is None and credit is None:
                 skipped += 1
                 continue
             amount = (credit or 0) - abs(debit or 0)
         elif amount_i is not None:
-            amount = parse_amount(row[amount_i])
+            amount = parse_amount(_cell(row, amount_i))
             if amount is None:
                 skipped += 1
                 continue
             if type_i is not None:
-                kind = row[type_i].strip().upper()
+                kind = _cell(row, type_i).strip().upper()
                 if kind in ("DR", "DEBIT", "WITHDRAWAL"):
                     amount = -abs(amount)
         else:
             raise SystemExit("error: no Debit/Credit or Amount column found")
-        description = row[desc_i].strip() if desc_i is not None else ""
+        description = _cell(row, desc_i).strip() if desc_i is not None else ""
         out.append({
             "date": day.isoformat(), "description": description,
             "merchant": merchant_key(description), "amount": round(amount, 2),
-            "balance": parse_amount(row[balance_i]) if balance_i is not None else None,
+            "balance": parse_amount(_cell(row, balance_i)) if balance_i is not None else None,
             "account": account,
         })
     print(f"ingested {len(out)} transactions, skipped {skipped} rows",
@@ -157,7 +203,7 @@ DATE_LINE = re.compile(
     r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2})\b\s*(.*)$")
 
 
-def _fix_years(rows, year):
+def _fix_years(rows, year, date_format=None):
     """Assign years to month-name dates, rolling over Dec into Jan."""
     current, prev_month, out = year, None, []
     for day_text, rest in rows:
@@ -168,7 +214,7 @@ def _fix_years(rows, year):
             except ValueError:
                 pass
         if parsed is None:
-            out.append((parse_date(day_text), rest))
+            out.append((parse_date(day_text, date_format), rest))
             continue
         if prev_month is not None and parsed.month < prev_month - 6:
             current += 1
@@ -177,16 +223,28 @@ def _fix_years(rows, year):
     return out
 
 
-def ingest_text(path, account, year):
+def ingest_text(path, account, year, date_format=None):
     """Best-effort parse of a plain-text statement dump, such as the output
     of `pdftotext -layout statement.pdf out.txt`. Amount signs are taken as
     printed when marked, and otherwise inferred from the running balance."""
     with open(path, encoding="utf-8", errors="replace") as fh:
         lines = fh.read().splitlines()
+    opening_balance = None
     raw = []
     for line in lines:
         match = DATE_LINE.match(line)
         if not match:
+            # An OPENING BALANCE line often carries no leading date, so the
+            # date filter below would drop it and the first transaction's
+            # sign could not be balance-checked. Capture its amount here.
+            stripped = line.strip()
+            if stripped.upper().startswith("OPENING BALANCE"):
+                tokens = stripped.split()
+                while tokens:
+                    value = parse_amount(tokens.pop())
+                    if value is not None:
+                        opening_balance = value
+                        break
             continue
         day_text, rest = match.group(1), match.group(2).strip()
         second = DATE_LINE.match(rest)  # posting-date column
@@ -202,8 +260,11 @@ def ingest_text(path, account, year):
         if not amounts:
             continue
         raw.append((day_text, " ".join(tokens), amounts))
-    dated = _fix_years([(d, (desc, amts)) for d, desc, amts in raw], year)
-    out, prev_balance, inferred, uninferred = [], None, 0, 0
+    if not date_format:
+        date_format = detect_slash_format(d for d, _, _ in raw)
+    dated = _fix_years([(d, (desc, amts)) for d, desc, amts in raw], year,
+                       date_format)
+    out, prev_balance, inferred, uninferred = [], opening_balance, 0, 0
     for day, (description, amounts) in dated:
         if day is None:
             continue
@@ -443,7 +504,18 @@ def money(value):
     return f"${abs(value):,.2f}" if isinstance(value, (int, float)) else "n/a"
 
 
+def money_signed(value):
+    """money() with the sign kept: for values that can be negative, such
+    as a month's net, where stripping the sign would print a deficit as
+    a surplus."""
+    if not isinstance(value, (int, float)):
+        return "n/a"
+    return f"-${abs(value):,.2f}" if value < 0 else f"${value:,.2f}"
+
+
 def render_report(s, currency):
+    if not s["period"]:
+        return "# Financial audit\n\nNo transactions in period.\n"
     lines = [f"# Financial audit, {s['period'][0]} to {s['period'][1]}",
              "",
              f"Currency {currency}. Covers {s['transaction_count']} "
@@ -456,7 +528,7 @@ def render_report(s, currency):
     for month, v in s["monthly"].items():
         net = v["income"] - v["spending"]
         lines.append(f"| {month} | {money(v['income'])} | "
-                     f"{money(v['spending'])} | {money(net)} | "
+                     f"{money(v['spending'])} | {money_signed(net)} | "
                      f"{money(v['transfers'])} |")
     lines += ["", "## Recurring bills and subscriptions", "",
               "| Merchant | Cadence | Average | Last | Monthly cost |",
@@ -536,12 +608,18 @@ def main():
     p_csv.add_argument("file")
     p_csv.add_argument("--account", default="Statement account")
     p_csv.add_argument("--out")
+    p_csv.add_argument("--date-format", choices=["DMY", "MDY"], default=None,
+                       help="Slash-date convention for this file; default "
+                            "infers it per file from unambiguous dates")
 
     p_text = sub.add_parser("ingest-text")
     p_text.add_argument("file")
     p_text.add_argument("--account", default="Statement account")
     p_text.add_argument("--year", type=int, default=date.today().year)
     p_text.add_argument("--out")
+    p_text.add_argument("--date-format", choices=["DMY", "MDY"], default=None,
+                        help="Slash-date convention for this file; default "
+                             "infers it per file from unambiguous dates")
 
     p_plaid = sub.add_parser("ingest-plaid")
     p_plaid.add_argument("file")
@@ -555,9 +633,11 @@ def main():
 
     args = parser.parse_args()
     if args.command == "ingest-csv":
-        write_jsonl(ingest_csv(args.file, args.account), args.out)
+        write_jsonl(ingest_csv(args.file, args.account, args.date_format),
+                    args.out)
     elif args.command == "ingest-text":
-        write_jsonl(ingest_text(args.file, args.account, args.year), args.out)
+        write_jsonl(ingest_text(args.file, args.account, args.year,
+                                args.date_format), args.out)
     elif args.command == "ingest-plaid":
         write_jsonl(ingest_plaid(args.file), args.out)
     elif args.command == "audit":

@@ -1,3 +1,8 @@
+---
+name: scrub-before-sharing
+description: Prepare a file, folder, skill or connector bundle for someone outside the household by stripping the user's private data from every file in it and verifying the clean copy before it is shared.
+---
+
 # Scrub Before Sharing
 
 ## Build a share copy, never share the live folder
@@ -20,7 +25,7 @@
 
 ## Verify the clean copy and report the exclusions
 
-- Run `muse.exec` with a text search over the finished share copy for each value and identifier class you removed, and fix any hit before the copy goes anywhere.
+- Run a text search over the finished share copy (the bundled `scripts/scrub_scan.py`, or your platform's file-search tool) for each value and identifier class you removed, and fix any hit before the copy goes anywhere.
 
 - Report the verification as counts the user can check, naming what was removed or replaced and stating that the search found zero remaining hits.
 
@@ -40,7 +45,7 @@
 
 ## Available connectors
 
-- Use `muse.connector_search` to find other connectors and `muse.skill_search` to find related skills.
+- If your agent platform has a connector or skill directory, search it to find related connectors and skills.
 
 - If nothing here fits, look on the web for a maintained API or MCP server and set it up with [Custom Connectors and MCPs](/opt/muse/skills/custom-connector-setup/SKILL.md), or build a custom connector.
 

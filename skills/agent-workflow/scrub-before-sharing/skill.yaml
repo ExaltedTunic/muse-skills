@@ -2,4 +2,4 @@ name: "scrub_before_sharing"
 title: "Scrub Before Sharing"
 description: "Prepare a file, folder, skill or connector bundle for someone outside the household by stripping the user's private data from every file in it and verifying the clean copy before it is shared."
 category: "Privacy"
-include_in_prompt: false
+include_in_prompt: true

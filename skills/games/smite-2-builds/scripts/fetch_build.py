@@ -157,6 +157,19 @@ STARTER_FAMILIES = {
 }
 
 
+def primary_role(builds):
+    """The god's primary role: the most common played_role in the sample,
+    or None when the data carries no role information. Ties go to the
+    role encountered first."""
+    counts = Counter()
+    for b in builds or []:
+        if isinstance(b, dict):
+            r = str(b.get("played_role") or "").strip().lower()
+            if r:
+                counts[r] += 1
+    return counts.most_common(1)[0][0] if counts else None
+
+
 def aggregate(builds, role):
     starter_forms = {}
     starter_families = Counter()
@@ -165,10 +178,12 @@ def aggregate(builds, role):
     item_positions = {}
     item_objs = {}
     used = 0
+    role_aliases = {"adc": {"adc", "carry"}, "carry": {"adc", "carry"}}
+    wanted = role_aliases.get(role.strip().lower(), {role.strip().lower()}) if role else None
     for b in builds:
         if not isinstance(b, dict):
             continue
-        if role and str(b.get("played_role", "")).lower() != role.lower():
+        if wanted and str(b.get("played_role", "")).lower() not in wanted:
             continue
         used += 1
         starter = item_view(b.get("starter"))
@@ -275,20 +290,38 @@ def fetch_skills(god_display, role):
     except Exception:
         return None
     text = html.replace('\\"', '"').replace("\\\\", "\\")
+    matches = list(re.finditer(r'"abilityLevelOrder":\[([0-9,]+)\]', text))
     records = []
-    for m in re.finditer(r'"abilityLevelOrder":\[([0-9,]+)\]', text):
-        ctx = text[max(0, m.start() - 4000):m.end() + 4000]
-        roles_m = re.findall(r'"roles":\[([^\]]*)\]', ctx)
-        roles = re.findall(r'"([A-Za-z ]+)"', roles_m[-1]) if roles_m else []
-        score_m = re.findall(r'"matchScore":(\d+)', ctx)
-        title_m = re.findall(r'"title":"([^"]{1,60})"', ctx)
+
+    def _pick(pattern, before, after):
+        """A record's fields sit with its own abilityLevelOrder, so pair
+        from the segment between neighbouring orders, preferring the
+        values just before this order. A bare window around the match
+        can reach into a neighbouring build and pair its roles or score
+        with this build's order."""
+        found = re.findall(pattern, before)
+        if found:
+            return found[-1]
+        found = re.findall(pattern, after)
+        return found[0] if found else None
+
+    for i, m in enumerate(matches):
+        seg_start = matches[i - 1].end() if i else max(0, m.start() - 4000)
+        seg_end = (matches[i + 1].start() if i + 1 < len(matches)
+                   else m.end() + 4000)
+        before, after = text[seg_start:m.start()], text[m.end():seg_end]
+        roles_raw = _pick(r'"roles":\[([^\]]*)\]', before, after)
+        roles = (re.findall(r'"([A-Za-z ]+)"', roles_raw)
+                 if roles_raw else [])
+        score = _pick(r'"matchScore":(\d+)', before, after)
+        title = _pick(r'"title":"([^"]{1,60})"', before, after)
         order = [int(x) for x in m.group(1).split(",") if x]
         if len(order) >= 10:
             records.append({
                 "order": order,
                 "roles": roles,
-                "score": int(score_m[-1]) if score_m else 0,
-                "title": title_m[0] if title_m else None,
+                "score": int(score) if score else 0,
+                "title": title,
             })
     if not records:
         return None
@@ -341,7 +374,8 @@ def main():
 
     god = god_slug(args.god)
     role = args.role.strip().lower() if args.role else None
-    role_path = {"adc": "adc", "carry": "adc"}.get(role, role)
+    # SmiteBrain names the carry role "carry", not "adc".
+    role_path = {"adc": "carry", "carry": "carry"}.get(role, role)
 
     page = None
     source_url = None
@@ -361,17 +395,30 @@ def main():
         print(f"No build data found for {god} on SmiteBrain.", file=sys.stderr)
         return 1
 
-    result = aggregate(page["builds"], args.role)
+    effective_role = role
+    role_note = None
+    if not effective_role:
+        effective_role = primary_role(page["builds"])
+        if effective_role:
+            role_note = (f"no --role given; using the god's primary role "
+                         f"in the sample ({effective_role})")
+        else:
+            role_note = ("no --role given and the sample carries no role "
+                         "data; pooling all roles")
+        print(f"note: {role_note}", file=sys.stderr)
+    result = aggregate(page["builds"], effective_role)
     if not result:
-        print(f"No {args.role or 'any-role'} builds in the recent sample for {god}.",
+        print(f"No {effective_role or 'any-role'} builds in the recent sample for {god}.",
               file=sys.stderr)
         return 1
 
     result["god"] = god
-    result["role"] = args.role
+    result["role"] = effective_role
+    if role_note:
+        result["role_note"] = role_note
     result["patch"] = current_patch(god)
     result["source"] = source_url
-    result["skills"] = fetch_skills(args.god, args.role)
+    result["skills"] = fetch_skills(args.god, effective_role)
 
     if args.json:
         print(json.dumps(result, indent=2))
@@ -384,7 +431,7 @@ def main():
             return view["name"]
 
         god_name = " ".join(w.capitalize() for w in god.split("-"))
-        role_name = (args.role or "All roles").capitalize()
+        role_name = (effective_role or "All roles").capitalize()
         print(f"**{god_name} · {role_name}** · {result['patch'] or 'patch ?'}"
               f" · {result['sample']} top builds, hourly data")
         chain = [pair(result["starter"])] + [pair(v) for v in result["core"]]
@@ -411,7 +458,7 @@ def main():
             return "(none in sample)"
         return f"{view['name']} ({view['count']}/{result['sample']})"
 
-    print(f"{god} - {args.role or 'all roles'} - {result['patch'] or 'patch unknown'}"
+    print(f"{god} - {effective_role or 'all roles'} - {result['patch'] or 'patch unknown'}"
           f" - sample {result['sample']} top-player builds - {source_url}")
     starter = result["starter"]
     if starter:

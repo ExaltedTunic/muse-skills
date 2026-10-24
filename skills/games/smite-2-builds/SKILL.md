@@ -1,3 +1,8 @@
+---
+name: smite-2-builds
+description: Build one current-patch, role-specific Smite 2 build from recent top player match data on SmiteBrain, cross-checked against SmiteSource, for when the user asks for a god build.
+---
+
 # Smite 2 Build Builder
 
 ## HARD GATE: live data or nothing (read this first)
@@ -15,17 +20,17 @@ Smite 1 is a different game with a different item shop, but its items and metas 
 
 - Return one build, not a menu of builds. Keep the answer concise and factual, presented as the compact card defined in the Present section.
 
-## Defaults for this user
+## Defaults
 
-- When a god is named without a role, default to that god's most common role: the role with the largest recent sample for the god in the data (with the script, omit --role and it reads the god's primary role; when browsing, compare the per-role sample sizes). Never assume Jungle just because it is his favourite role. If the most common role cannot be determined, ask which role instead of assuming one. (Rule changed Oct 24, 2026 at his direction; the skill previously assumed Jungle, which hands wrong-role builds to anyone asking about a god outside a jungle pool.) His own pool stays Bastet, Fenrir, Thanatos, Awilix, Pele and Thor.
+- When a god is named without a role, default to that god's most common role: the role with the largest recent sample for the god in the data (with the script, omit --role and it selects the god's primary role in the sample; when browsing, compare the per-role sample sizes). Never assume a role just because it is someone's favourite. If the most common role cannot be determined, ask which role instead of assuming one.
 
-- Default the mode to Conquest. Every source below defaults to Conquest, and Arena or Assault builds are out of scope unless he asks.
+- Default the mode to Conquest. Every source below defaults to Conquest, and Arena or Assault builds are out of scope unless the user asks.
 
-- Target top player meta as the definition of optimal, as the user confirmed on 2026-10-23. Recent data is a hard requirement, so a build from an older patch fails no matter how strong it looks.
+- Target top player meta as the definition of optimal. Recent data is a hard requirement, so a build from an older patch fails no matter how strong it looks.
 
-- Break ties toward the early aggression dive and burst variant when two builds sit close in the data. He found tanky hit and run Ratatoskr underwhelming and prefers Thor style all in dive, so say in one line when the tiebreak decided the pick.
+- Break ties toward the early aggression dive and burst variant when two builds sit close in the data, and say in one line when the tiebreak decided the pick. If the user has a stated playstyle preference of their own, it wins over this default.
 
-- Honour an aspect or variant he names, such as tanky, basic attack or ability based, by filtering the sample to it instead of returning the generic consensus.
+- Honour an aspect or variant the user names, such as tanky, basic attack or ability based, by filtering the sample to it instead of returning the generic consensus.
 
 ## API verdict
 
@@ -43,7 +48,7 @@ Smite 1 is a different game with a different item shop, but its items and metas 
 python3 ~/workspace/custom-skills/smite-2-builds/scripts/fetch_build.py <god> --role <role>
 ```
 
-- Pass the role as Jungle, Solo, Mid, ADC or Support. Run with `--json` to build the answer card, which is the default way to answer. Use `--compact` only for the plain text fallback format.
+- Pass the role as Jungle, Solo, Mid, ADC or Support. SmiteBrain calls the ADC role Carry, in both the page path and its data, and the script maps ADC to it. Run with `--json` to build the answer card, which is the default way to answer. Use `--compact` only for the plain text fallback format.
 
 - Read the script output as evidence with limits. The sample is the 10 most recent top player builds for that god and role, counts such as 7/10 are the support behind each pick, and the starter may be recorded in its evolved form, so the script groups starters by family line.
 
@@ -110,4 +115,4 @@ python3 ~/workspace/custom-skills/smite-2-builds/scripts/fetch_build.py <god> --
 
 - [SmiteFire](https://www.smitefire.com/smite/god/thor-22) for written guide rationale only. The pattern is /smite/god/<god slug>-<site id>, the id differs per god, and every guide there needs the Smite 2 tag and date check from the cross-check section before any of it is used.
 
-Last verified: 2026-10-23 from a Muse VM. SmiteBrain returned live Open Beta 46 data with a match timestamp from the same day. The script produced full six slot builds for Thor, Pele, Bastet and Fenrir in Jungle, with skill order extraction confirmed on Thor, Pele and Fenrir, and the settled card format.
+Last verified: 2026-10-23 from a Muse VM. SmiteBrain returned live Open Beta 46 data with a match timestamp from the same day. The script produced full six slot builds for Thor, Pele, Bastet and Fenrir in Jungle, with skill order extraction confirmed on Thor, Pele and Fenrir, and the card format is the compact one described above.

@@ -1,3 +1,8 @@
+---
+name: financial-audit
+description: Audit bills, spending, fees and debt deadlines from bank statements (CSV, PDF or screenshots), or Plaid where it is available. Read-only: finds overspending, subscription price creep, fees and deferred-interest deadlines. Never moves money.
+---
+
 # Financial Audit
 
 Audit bills, spending, fees and debt deadlines from statement exports or Plaid data, and produce a plain Markdown report. This skill gathers the evidence; decisions about what to do with the findings (which debt to attack, whether a purchase is affordable, a payoff plan) belong to the `financial_planning` skill.
@@ -41,7 +46,7 @@ cd ~/workspace/finance && python3 ~/workspace/custom-skills/financial-audit/scri
 cd ~/workspace/finance && python3 ~/workspace/custom-skills/financial-audit/scripts/finance_audit.py audit td.jsonl visa.jsonl --config config.json --out report.md --json-out summary.json
 ```
 
-- `ingest-csv` auto-detects Debit/Credit column pairs or a single Amount column, and the common date formats. It reports how many rows were skipped; a high skip count means the export format differs, so inspect the file header before trusting output.
+- `ingest-csv` auto-detects Debit/Credit column pairs or a single Amount column, and the common date formats. For slash dates it infers the file's DMY vs MDY convention once, from any unambiguous date in the file; pass `--date-format DMY` or `--date-format MDY` when every date in a file is ambiguous (both numbers 12 or under). It reports how many rows were skipped; a high skip count means the export format differs, so inspect the file header before trusting output.
 - `ingest-text` parses a plain-text statement dump (typically `pdftotext -layout` output). It reads lines that start with a date, takes trailing money columns as amount and running balance, and infers an amount's sign from the balance movement when the statement prints debits unsigned. It reports how many signs were inferred and how many rows could not be balance-checked; rows it cannot check deserve a spot-check against the statement before the audit is quoted.
 - `ingest-plaid` takes the saved JSON from the Plaid connector's `transactions-get`, maps account names, flips Plaid's sign convention (positive means outflow), and skips pending rows.
 - `audit` accepts several JSONL files at once, one per account, and merges them.

@@ -8,6 +8,7 @@ import os
 import subprocess
 
 profile = os.path.expanduser("~/workspace/tools/camoufox/profile")
+os.makedirs(profile, exist_ok=True)  # certutil -N fails on a missing dir
 ca = "/run/hatch/egress-tls/hatch-egress-ca.pem"
 db = f"sql:{profile}"
 
