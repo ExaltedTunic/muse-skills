@@ -1,0 +1,5 @@
+name: "language_curriculum_engineering"
+title: "Language Curriculum Engineering"
+description: "Build and maintain a CEFR-banded language course as data with validation gates: input-mass budgeting in reading words, listening minutes and lemmas, declared-vs-delivered lexis measurement, assessment integrity with provable model answers, manifest-accounted course audio, and strict-vs-lenient metric honesty. Use when designing a language curriculum, adding or auditing lessons and vocabulary at scale, planning extensive-reading or listening volume, generating course audio, or preparing native-speaker recording material."
+category: "Learning"
+include_in_prompt: true

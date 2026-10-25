@@ -1,0 +1,5 @@
+name: "generated_audio_pipeline"
+title: "Generated Audio Pipeline"
+description: "Run a pre-generated audio catalogue as an engineered pipeline: a manifest as source of truth with per-asset engine and voice provenance, codec choice as an explicit compatibility decision, churn-controlled regeneration, orphan lifecycle management in shared object storage, a written two-engine cost policy, and byte-level output verification that catches silent empty renders. Use when generating TTS or narration audio at catalogue scale, choosing an audio format, validating a generated-audio store, or mixing hosted and local synthesis engines."
+category: "Media"
+include_in_prompt: true

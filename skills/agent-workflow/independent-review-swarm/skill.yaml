@@ -1,0 +1,5 @@
+name: "independent_review_swarm"
+title: "Independent Review Swarm"
+description: "Commission an independent multi-reviewer audit of a finished body of work: fresh reviewers who built none of it, one lens each, findings backed by file-and-line evidence, every load-bearing claim re-verified by the synthesizer before it is adopted, and a fix proposal bucketed into fix-now, owner-call, and parked. Use before shipping a large stack, after a multi-agent build program, or whenever the people who did the work would otherwise be the ones grading it."
+category: "Agent Workflow"
+include_in_prompt: true

@@ -1,0 +1,5 @@
+name: "agent_orchestration"
+title: "Agent Orchestration"
+description: "Run multi-agent build programs that survive contact with reality: scoped briefs with measured targets and stop conditions, isolated worktrees, a single integrator who merges one branch at a time, and verification that re-derives every claim from diffs and full gate logs instead of trusting worker summaries. Use when a job is split across two or more delegated agents or waves, when several branches must land on one mainline, or when a delegated result will be reported as done."
+category: "Agent Workflow"
+include_in_prompt: true

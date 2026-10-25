@@ -1,0 +1,5 @@
+name: "schema_migration_safety"
+title: "Schema Migration Safety"
+description: "Make hand-written SQL migrations trustworthy: an applied-migration ledger whose row is written in the same transaction as the migration body, an evidence-based adoption rule for databases that predate the ledger, a test pinning the runner's list to the migration directory, a frozen ORM journal, drift audits between the schema code and the migrated reality, and CHECK constraints whose value sets are derived from the code's own writers. Use when a project applies migrations by hand or at build time, when nobody can say exactly which migrations a given database has run, or before adding constraints, retention, or deletion logic on top of an unverified schema history."
+category: "Agent Workflow"
+include_in_prompt: true

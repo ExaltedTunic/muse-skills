@@ -2,7 +2,7 @@
 
 Custom skills for Muse personal AI agents, built and tested in daily use and shared with friends. A living collection: new skills land here as they are built, and existing ones get updated in place as they improve.
 
-Skills are organized by purpose under `skills/`: [agent workflow](skills/agent-workflow/), [finance](skills/finance/), [shopping](skills/shopping/), [games](skills/games/), [fitness](skills/fitness/), and [career](skills/career/). Each purpose folder has its own index page.
+Skills are organized by purpose under `skills/`: [agent workflow](skills/agent-workflow/), [finance](skills/finance/), [shopping](skills/shopping/), [games](skills/games/), [fitness](skills/fitness/), [career](skills/career/), [learning](skills/learning/), and [media](skills/media/). Each purpose folder has its own index page.
 
 Every skill in this repo has passed a whole-folder privacy scrub before publishing. Personal skills and third-party skills are not mirrored here; where a skill builds on someone else's work, it links upstream instead.
 
@@ -29,6 +29,11 @@ How your agent works with you day to day.
 | [scrub-before-sharing](skills/agent-workflow/scrub-before-sharing/) | Prepare a file, folder, skill, or connector bundle for someone else by stripping private data from every file in it, scripts and configs included, and verifying the clean copy before it is shared. | Nothing extra |
 | [verify-before-shipping](skills/agent-workflow/verify-before-shipping/) | Require runnable evidence before claiming any script, skill, config or document works: a smoke-test pass over edge-case inputs, a doc-versus-behaviour cross-check, and full-output gate runs. | Nothing extra |
 | [memory-hygiene](skills/agent-workflow/memory-hygiene/) | Audit long-term memory files on a cadence: merge duplicates, retire stale threads, resolve contradicted facts, propagate corrections, and hold a density ceiling. | Python script included |
+| [agent-orchestration](skills/agent-workflow/agent-orchestration/) | Run multi-agent build programs that survive contact with reality: scoped briefs with measured targets and stop conditions, isolated worktrees, one integrator merging one branch at a time, and verification that re-derives every claim from diffs and full gate logs instead of trusting worker summaries. | Nothing extra |
+| [independent-review-swarm](skills/agent-workflow/independent-review-swarm/) | Commission an independent multi-reviewer audit of finished work: fresh reviewers who built none of it, one lens each, findings backed by file-and-line evidence, every load-bearing claim re-verified before adoption, and a fix proposal bucketed fix-now, owner-call, and parked. | Nothing extra |
+| [deep-review](skills/agent-workflow/deep-review/) | The depth standard for any review pass: an exhaustive scrub that treats every load-bearing claim as a claim to verify against a real anchor, plus a feasibility check, and reports issues found and coverage checked rather than impressions. | Nothing extra |
+| [schema-migration-safety](skills/agent-workflow/schema-migration-safety/) | Make hand-written SQL migrations trustworthy: a transactional applied-migration ledger, an evidence-based adoption rule for pre-ledger databases, a runner list pinned to the migration directory by test, a frozen ORM journal, drift audits, and CHECK constraints derived from the code's own writers. | Nothing extra |
+| [accessibility-design-guard](skills/agent-workflow/accessibility-design-guard/) | Run an accessibility pass over a web app and freeze what it fixed as automated design-guard tests: keyboard-operable controls with accessible names, focus that moves and stays visible, no zoom locks, timed-task accommodations that never move the pass bar, and design-system rules enforced as tests that fail on drift. | Nothing extra |
 
 ### [Finance](skills/finance/)
 
@@ -64,6 +69,18 @@ How your agent works with you day to day.
 ## Portability
 
 Every `SKILL.md` carries YAML frontmatter (name, description) so other agent platforms can load these alongside the `skill.yaml`. Most skills are plain method and travel as-is. The Muse-specific pieces are named where they occur: financial-audit's optional Plaid step, amazon-search's VM paths and proxy-CA setup, smite-2-builds' widget presentation, and identity-adaptation's assumption that the platform auto-loads the agent's `SOUL.md` and `IDENTITY.md` files. On another platform, adapt or skip those named pieces; the rest of each workflow stands on its own.
+
+### [Learning](skills/learning/)
+
+| Skill | What it does | Needs |
+| --- | --- | --- |
+| [language-curriculum-engineering](skills/learning/language-curriculum-engineering/) | Build and maintain a CEFR-banded language course as data with validation gates: input-mass budgeting in reading words, listening minutes and lemmas, declared-vs-delivered lexis measurement, assessment integrity with provable model answers, and strict-vs-lenient metric honesty. | Nothing extra |
+
+### [Media](skills/media/)
+
+| Skill | What it does | Needs |
+| --- | --- | --- |
+| [generated-audio-pipeline](skills/media/generated-audio-pipeline/) | Run a pre-generated audio catalogue as an engineered pipeline: a manifest as source of truth with per-asset engine and voice provenance, codec choice as an explicit compatibility decision, churn-controlled regeneration, orphan lifecycle management in shared object storage, and a written two-engine cost policy. | Nothing extra |
 
 ## Sharing back
 

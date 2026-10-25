@@ -1,0 +1,5 @@
+name: "accessibility_design_guard"
+title: "Accessibility & Design Guard"
+description: "Run an accessibility pass over a web app and freeze what it fixed as automated design-guard tests: keyboard-operable controls with accessible names, focus that moves and stays visible, no zoom locks, sane tab order through interactive text, timed-task accommodations that never move the pass bar, and design-system rules (banned copy, token-only colours, terminology standards) enforced as tests that fail on drift. Use when auditing a web UI for accessibility, adding an accommodation, or turning a design document's written rules into CI enforcement."
+category: "Agent Workflow"
+include_in_prompt: true

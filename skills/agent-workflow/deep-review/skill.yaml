@@ -1,0 +1,5 @@
+name: "deep_review"
+title: "Deep Review"
+description: "The depth standard for any review pass: an exhaustive scrub that treats every load-bearing claim in the material as a claim to verify against a real anchor, plus a feasibility check, and reports issues found and coverage checked rather than impressions. Use whenever asked to review, audit, check, proof, or pass over code, content, documents, plans, or data, and whenever a sync, migration, or template fill carries values from one place to another."
+category: "Agent Workflow"
+include_in_prompt: true
