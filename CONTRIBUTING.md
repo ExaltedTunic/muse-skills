@@ -13,3 +13,7 @@ This is a living collection shared among friends. Skills can come back the other
 ## Proposing a skill
 
 Open an issue or a pull request with the skill folder, a one-line entry for the README catalogue, and a changelog note: what it does, what it needs, and what it was tested on.
+
+## Reviewing a skill
+
+If you are reviewing skills in this repo (especially with an AI reviewer), read [docs/context-for-reviewers.md](docs/context-for-reviewers.md) first. It covers how Muse actually loads and uses skills, this collection's deliberate conventions (so they are not flagged as defects), and the review standard and disposition vocabulary this repo uses.
