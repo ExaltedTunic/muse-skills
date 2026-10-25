@@ -1,6 +1,6 @@
 # muse-skills
 
-Custom skills for Muse personal AI agents, built and tested in daily use and shared with friends. A living collection: new skills land here as they are built, and existing ones get updated in place as they improve.
+Custom skills for Muse personal AI agents, built and tested in daily use and shared with friends. A living collection: new skills land here as they are built, and existing ones get updated in place as they improve. The collection currently holds 18 skills across eight purpose folders.
 
 Skills are organized by purpose under `skills/`: [agent workflow](skills/agent-workflow/), [finance](skills/finance/), [shopping](skills/shopping/), [games](skills/games/), [fitness](skills/fitness/), [career](skills/career/), [learning](skills/learning/), and [media](skills/media/). Each purpose folder has its own index page.
 
@@ -26,7 +26,7 @@ How your agent works with you day to day.
 | --- | --- | --- |
 | [identity-adaptation](skills/agent-workflow/identity-adaptation/) | Grow a durable, personal identity with your user over time: agent-owned identity files, a plain-words feedback contract, voice disciplines that keep replies human, and a periodic self-review for drift. | Nothing extra |
 | [external-review-intake](skills/agent-workflow/external-review-intake/) | Verify claims from relayed outside reviews (other AIs, human reviewers, audits) against the source before acting, and fold in only what the user approves. | Nothing extra |
-| [scrub-before-sharing](skills/agent-workflow/scrub-before-sharing/) | Prepare a file, folder, skill, or connector bundle for someone else by stripping private data from every file in it, scripts and configs included, and verifying the clean copy before it is shared. | Nothing extra |
+| [scrub-before-sharing](skills/agent-workflow/scrub-before-sharing/) | Prepare a file, folder, skill, or connector bundle for someone else by stripping private data from every file in it, scripts and configs included, and verifying the clean copy before it is shared. | Python script included |
 | [verify-before-shipping](skills/agent-workflow/verify-before-shipping/) | Require runnable evidence before claiming any script, skill, config or document works: a smoke-test pass over edge-case inputs, a doc-versus-behaviour cross-check, and full-output gate runs. | Nothing extra |
 | [memory-hygiene](skills/agent-workflow/memory-hygiene/) | Audit long-term memory files on a cadence: merge duplicates, retire stale threads, resolve contradicted facts, propagate corrections, and hold a density ceiling. | Python script included |
 | [agent-orchestration](skills/agent-workflow/agent-orchestration/) | Run multi-agent build programs that survive contact with reality: scoped briefs with measured targets and stop conditions, isolated worktrees, one integrator merging one branch at a time, and verification that re-derives every claim from diffs and full gate logs instead of trusting worker summaries. | Nothing extra |
@@ -45,8 +45,8 @@ How your agent works with you day to day.
 
 | Skill | What it does | Needs |
 | --- | --- | --- |
-| [amazon-search](skills/shopping/amazon-search/) | Real Amazon listings with live search-page prices from any regional storefront (amazon.ca, amazon.com, amazon.co.uk, amazon.de, and more) through a local Camoufox browser. Search only: no login, no cart, no checkout. | Camoufox setup; built for a Muse VM, so its paths and setup notes are Muse-specific |
-| [price-history-check](skills/shopping/price-history-check/) | Check whether an Amazon price is actually a deal: cross-check an ASIN against CamelCamelCamel price history and other retailers before calling a sale price good. | Nothing extra |
+| [amazon-search](skills/shopping/amazon-search/) | Real Amazon listings with live search-page prices from any regional storefront (amazon.ca, amazon.com, amazon.co.uk, amazon.de, and more) through a local Camoufox browser, including unit prices and review counts where the page shows them. Search only: no login, no cart, no checkout. | Camoufox setup; built for a Muse VM, so its paths and setup notes are Muse-specific |
+| [price-history-check](skills/shopping/price-history-check/) | Check whether an Amazon price is actually a deal: cross-check an ASIN against CamelCamelCamel and Keepa price history and other retailers before calling a sale price good. | Nothing extra |
 
 ### [Games](skills/games/)
 
@@ -66,10 +66,6 @@ How your agent works with you day to day.
 | --- | --- | --- |
 | [norway-job-search-flow](skills/career/norway-job-search-flow/) | Verification-first pipeline for a Norway job search that needs a skilled-worker residence permit: private search box, five-source sweep, Brønnøysund and staffing-register verification, ledger-first shortlist, written-evidence permit status, and per-listing approval before anything is sent or submitted. | Nothing extra. The candidate supplies a private profile and ledger outside the skill |
 
-## Portability
-
-Every `SKILL.md` carries YAML frontmatter (name, description) so other agent platforms can load these alongside the `skill.yaml`. Most skills are plain method and travel as-is. The Muse-specific pieces are named where they occur: financial-audit's optional Plaid step, amazon-search's VM paths and proxy-CA setup, smite-2-builds' widget presentation, and identity-adaptation's assumption that the platform auto-loads the agent's `SOUL.md` and `IDENTITY.md` files. On another platform, adapt or skip those named pieces; the rest of each workflow stands on its own.
-
 ### [Learning](skills/learning/)
 
 | Skill | What it does | Needs |
@@ -81,6 +77,10 @@ Every `SKILL.md` carries YAML frontmatter (name, description) so other agent pla
 | Skill | What it does | Needs |
 | --- | --- | --- |
 | [generated-audio-pipeline](skills/media/generated-audio-pipeline/) | Run a pre-generated audio catalogue as an engineered pipeline: a manifest as source of truth with per-asset engine and voice provenance, codec choice as an explicit compatibility decision, churn-controlled regeneration, orphan lifecycle management in shared object storage, and a written two-engine cost policy. | Nothing extra |
+
+## Portability
+
+Every `SKILL.md` carries YAML frontmatter (name, description) so other agent platforms can load these alongside the `skill.yaml`. Most skills are plain method and travel as-is. The Muse-specific pieces are named where they occur: financial-audit's optional Plaid step, amazon-search's VM paths and proxy-CA setup, smite-2-builds' widget presentation, and identity-adaptation's assumption that the platform auto-loads the agent's `SOUL.md` and `IDENTITY.md` files. On another platform, adapt or skip those named pieces; the rest of each workflow stands on its own.
 
 ## Sharing back
 

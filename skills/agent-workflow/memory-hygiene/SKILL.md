@@ -18,9 +18,11 @@ This skill assumes the common shape: one curated long-term file (call it MEMORY.
 
 ## Measure first
 
-Run the bundled `scripts/memory_audit.py` over the curated file and the recent logs. You want the starting facts: line and word counts, the section inventory, and any exact-duplicate lines. Report them before you touch anything; they are also how you prove the pass did something.
+Run the bundled `scripts/memory_audit.py` over the curated file and the recent logs. You want the starting facts: line and word counts, the section inventory, and any normalized duplicate lines (case/punctuation-insensitive), within and across the files audited. Report them before you touch anything; they are also how you prove the pass did something.
 
 ## The pass, in order
+
+Before step 1, save a dated backup copy of the curated file (for example, copy it into a backups folder with the date in the filename). The curated file has no version history by default, so a bad merge or a truncated write is otherwise unrecoverable: the dated logs hold the raw history, not the consolidated wording you are about to change.
 
 1. **Merge duplicates.** When two entries merge or one replaces another, keep the surviving entry's own date, or add a short dated note of the merge, so the next pass can tell which claim is newer without digging through raw logs. The same fact recorded twice, in the same words or different ones, becomes one entry: the clearest wording, the most context, the latest date. Duplicates are not harmless; when one copy gets corrected and the other does not, the file starts contradicting itself, which is worse than either version alone.
 2. **Resolve contradictions.** Where two entries disagree, find out which is current: the user's latest explicit statement beats an older note, a verified record beats a recollection, and anything you cannot settle goes to the user as a question, not a coin flip. The curated file must end the pass with one version of every fact. The losing version's history, if it matters, lives in the dated logs, marked as superseded there.

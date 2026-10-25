@@ -13,7 +13,8 @@ below. A marketplace may be a code from MARKETPLACES (ca, us, uk, de, ...)
 or a bare Amazon domain (amazon.com, amazon.com.au, ...).
 
 Prints title, price (in the storefront's currency, as shown), rating and
-product URL per result, and names the storefront searched.
+product URL per result, plus unit price and review count when the card
+shows them, and names the storefront searched.
 Exits non-zero with a clear message if Amazon serves a block/captcha page.
 """
 import argparse
@@ -93,9 +94,14 @@ def resolve_marketplace(value: str) -> tuple[str, str, str | None]:
         "like amazon.com.au, or --domain.")
 
 
+# Currency symbols and ISO codes covering every storefront in
+# MARKETPLACES, in both prefix ("$29.99", "R$ 199,90") and suffix
+# ("29,99 €", "1,299 JPY") layouts.
+_PRICE_CODES = (r"EUR|USD|GBP|CAD|AUD|JPY|SEK|PLN"
+                r"|AED|BRL|CNY|EGP|INR|MXN|SAR|SGD|TRY|ZAR")
 _PRICE_LINE = re.compile(
-    r"(?:€|£|\$|EUR|USD|GBP|CAD|AUD|JPY|SEK|PLN)\s?[\d.,]+"
-    r"|[\d.,]+\s?(?:€|£|EUR|USD|GBP|CAD|AUD|SEK|PLN)")
+    rf"(?:€|£|\$|¥|￥|₹|₺|R\$|{_PRICE_CODES})\s?[\d.,]+"
+    rf"|[\d.,]+\s?(?:€|£|¥|￥|₹|₺|{_PRICE_CODES})")
 
 
 def _price_text(r) -> str | None:
@@ -115,9 +121,13 @@ def _price_text(r) -> str | None:
         if whole:
             frac = price.query_selector(".a-price-fraction")
             sym = price.query_selector(".a-price-symbol")
-            text = whole.inner_text().strip()
+            text = "".join(whole.inner_text().split())
             if frac:
-                text += frac.inner_text().strip()
+                frac_text = "".join(frac.inner_text().split())
+                if frac_text:
+                    if text and not text.endswith((".", ",")):
+                        text += "."
+                    text += frac_text
             if sym:
                 symbol = sym.inner_text().strip()
                 if symbol:
@@ -131,6 +141,50 @@ def _price_text(r) -> str | None:
         match = _PRICE_LINE.search(line.strip())
         if match:
             return match.group(0).strip()
+    return None
+
+
+_UNIT_PRICE_LINE = re.compile(
+    r"\(?\s*(?:€|£|\$|¥|￥|₹|₺|R\$|EUR|USD|GBP|CAD|AUD|JPY|SEK|PLN"
+    r"|AED|BRL|CNY|EGP|INR|MXN|SAR|SGD|TRY|ZAR)"
+    r"\s?[\d.,]+\s*/\s*[A-Za-z0-9µ ]{1,24}\)?")
+
+
+def _unit_price(r) -> str | None:
+    """Per-unit price when the card shows one, e.g. "$2.99 /100g"
+    (often rendered "($2.99 /100g)"). It lives in the card's visible
+    text lines, not in the .a-price block."""
+    for line in r.inner_text().splitlines():
+        match = _UNIT_PRICE_LINE.search(line.strip())
+        if match:
+            text = match.group(0).strip()
+            # inner_text line splits can strand the opening "(" on the
+            # previous line, so strip each bracket independently.
+            if text.startswith("("):
+                text = text[1:]
+            if text.endswith(")"):
+                text = text[:-1]
+            return text.strip()
+    return None
+
+
+def _review_count(r) -> str | None:
+    """Rating count as shown, e.g. "30,326". The count link's
+    aria-label is "30,326 ratings"; the stars popover's label
+    ("4.6 out of 5 stars, rating details") also contains "rating" and
+    comes first in the DOM, so match the number that directly precedes
+    the word "rating(s)", not the first number in any label. Fall back
+    to the numeric text of the underlined count element."""
+    for el in r.query_selector_all("a[aria-label]"):
+        label = el.get_attribute("aria-label") or ""
+        match = re.search(r"([\d][\d.,]*)\s+ratings?\b", label)
+        if match:
+            return match.group(1)
+    el = r.query_selector(".s-underline-text")
+    if el:
+        text = el.inner_text().strip()
+        if re.fullmatch(r"[\d][\d.,]*", text):
+            return text
     return None
 
 
@@ -153,7 +207,13 @@ def search(query: str, limit: int, domain: str,
             if "timeout" not in str(e).lower():
                 raise
             load_timed_out = True
-        page.wait_for_timeout(4000)
+        try:
+            page.wait_for_selector('[data-component-type="s-search-result"]',
+                                   timeout=8000)
+        except Exception:
+            # No result nodes rendered: fall through so the block-page
+            # and load-timeout checks below decide what happened.
+            pass
         nodes = page.query_selector_all('[data-component-type="s-search-result"]')
         if not nodes:
             # Decide block vs genuine no-results only when there is nothing
@@ -186,6 +246,8 @@ def search(query: str, limit: int, domain: str,
                 "title": t.inner_text().strip() if t else None,
                 "price": _price_text(r),
                 "rating": rating.inner_text().strip() if rating else None,
+                "unit_price": _unit_price(r),
+                "review_count": _review_count(r),
                 "sponsored": r.query_selector(".puis-sponsored-label-text") is not None,
                 "url": url,
             })
@@ -226,7 +288,13 @@ def main() -> int:
     else:
         for r in results:
             tag = " [sponsored]" if r.get("sponsored") else ""
-            print(f"- {r['price'] or '(no price)'} | {r['rating'] or ''} | {r['title']}{tag}")
+            extras = []
+            if r.get("review_count"):
+                extras.append(f"{r['review_count']} ratings")
+            if r.get("unit_price"):
+                extras.append(r["unit_price"])
+            suffix = f" ({'; '.join(extras)})" if extras else ""
+            print(f"- {r['price'] or '(no price)'} | {r['rating'] or ''} | {r['title']}{tag}{suffix}")
             if r["url"]:
                 print(f"  {r['url']}")
     cur = f" {currency}" if currency else ""

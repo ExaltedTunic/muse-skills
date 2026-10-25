@@ -27,6 +27,8 @@ The footprint must be the *newest* migration's, not a convenient one. An older f
 
 ## Prove the runner before you trust it
 
+Worked templates for everything in this skill — the ledger DDL, the runner algorithm, the adoption decision table, the proof matrix, and the constraint derivation worksheet — are in `references/runner-and-proof-templates.md`.
+
 Run the whole matrix against a disposable local database (an embedded or throwaway instance; never production) and keep the tests:
 
 1. **Fresh apply:** empty database, full list applies, every migration recorded, result lists exactly what ran.

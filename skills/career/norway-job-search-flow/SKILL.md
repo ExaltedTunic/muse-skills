@@ -93,6 +93,8 @@ Deduplication:
 - Ambiguity rule: same organisation number and same normalized title is not automatically the same job. If location, team, posting ID, or deadline differs, keep separate entries until a posting ID or URL proves they are the same vacancy. Merging two different openings is a worse error than carrying a duplicate.
 - Fallback key when the organisation number is unknown: "unknown-" plus the normalized source or agency name, plus the normalized title, plus the location. Fallback-key entries merge with each other only on a shared posting ID or URL. When the real organisation number is found, update the entry's key in place and note the change in its history.
 
+**Public-sector transparency warning.** Leg 2 surfaces municipal, county, health-trust, and state roles. Applications to Norwegian public-sector bodies are subject to the public applicant list (offentlig søkerliste, Offentleglova § 25): the applicant's name, age, current job title, and municipality can become public record unless a statutory exemption applies. Surface this to the candidate before they apply to a public-sector role, not after; it is a legitimate reason to skip an otherwise good listing.
+
 Every sweep reports which of the five legs actually ran, which failed or were inaccessible and why, and the date. A shortlist built from a partial sweep says so at the top.
 
 ## Verification protocol
@@ -230,6 +232,8 @@ For each role the candidate wants to pursue:
 4. Classify the application before asking for approval:
    - **Clean to file**: every requirement maps to evidence, there are no unresolved judgment calls, and the permit question uses the standard wording.
    - **Needs the candidate's input**: name the exact friction, one line each. Examples: an unconfirmed claim, a hard degree flag, a language flag, an on-site question, or an arrangement that is still unknown.
+
+Portal fields are their own deliverable. Webcruiter, Jobbnorge, ReachMee, and similar portals compute seniority (ansiennitet) and qualification eligibility from their structured chronological education and work fields, not from the attached PDF CV. A tailored PDF on top of careless portal fields still scores as careless: before submission, review the structured fields field by field against the same evidence map used for the CV.
 
 A classification is a recommendation, not permission. Nothing is submitted, sent, or posted without the candidate's explicit sign-off on that specific listing and that specific version of the materials.
 

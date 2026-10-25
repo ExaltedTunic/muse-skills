@@ -51,6 +51,9 @@ Build volume in **tranches**, each with per-module quotas for all three currenci
 - **Measure declared vs delivered per lesson.** A lesson declares the items it teaches; delivery means the item actually surfaces in the lesson's activities. Hold every declaring lesson to a minimum band (80% delivered is a workable floor) and gate it. Declared-but-never-presented vocabulary is the most common silent failure in a growing course.
 - **Gloss until the scan is clean.** Run the unglossed-content scan and add glosses until it reports zero. Gloss the **surface form**, the inflected token the learner actually meets ("the tasks", "answered"), not just the citation form; the scan counts surface tokens, and so does the learner's confusion.
 - **Duplicate-lemma discipline at integration.** Parallel builders independently coin the same high-frequency lemma under different ids. At integration, detect same-lemma/different-id pairs mechanically, keep one catalog entry, and rewire the other side's lesson and module references to it. Two entries for one lemma split its delivery evidence and its audio.
+- **Met-once lemma diagnostic.** Declared-vs-delivered checks whether a lemma surfaces in the lesson that declares it; nothing checks whether the learner ever meets it again. Run the met-once diagnostic across the catalog: lemmas delivered in one module that recur in no later lesson, reading, listening text, or drill. Each hit undermines spaced retrieval — a single exposure is an introduction, not learning. Fix it deliberately: wire a recurrence into a later module's warm-up, extensive text, or drill set, or record a waiver in the contract with a reason (a foundational item taught once on purpose). Report the met-once count alongside the delivery figures.
+
+The measurement definitions and worked templates behind this section (delivery measurement, the strict sweep, tranche reporting) are in `references/measures-and-templates.md`.
 
 ## Assessment integrity
 

@@ -19,6 +19,7 @@ One entry per asset. The full (tooling) manifest keeps the source text; the clie
 
 Rules:
 
+- `sourceFingerprint` is a hash of the **canonicalized** `sourceText`: normalize to Unicode NFC, trim leading/trailing whitespace, and collapse internal whitespace runs to single spaces before hashing. Canonicalize identically at generation and validation time; an é as one codepoint vs two, or a trailing space, must not change the fingerprint.
 - Path embeds a content hash, so a changed source produces a new path (and an orphan at the old one — see triage below).
 - `engine` and `voice` are written at generation time, never reconstructed later.
 - The client manifest is derived from the full manifest, never edited independently; validation fails on drift between them.

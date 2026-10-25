@@ -27,7 +27,7 @@ The canonical failure is the copied value. A figure that is correct for item A i
 - **Inventory before reading.** List the categories of load-bearing claims the material makes (quantities, dates, names, quotations, cross-references, behavioural promises) so coverage is a checklist, not a hope.
 - **Name the anchor for each category up front.** If a category has no anchor, decide how it will be handled (feasibility only, flagged as unverifiable) before starting, not after skipping it.
 - **Check mechanically where a machine can.** Recompute totals, re-derive counts, diff the quotation against the source, run the command the document tells the reader to run. Mechanical checks do not get tired at item 140.
-- **Record verdicts as you go.** Each claim or category ends in exactly one state: checked and clean, definite issue, or suspicion. A category with no recorded state was not reviewed, whatever the intention was.
+- **Record verdicts as you go.** Each claim or category ends in exactly one state: checked and clean, definite issue, suspicion, or unverifiable (no anchor exists to check it against). A category with no recorded state was not reviewed, whatever the intention was.
 - **Finish the asked scope before widening.** Complete coverage of what the review was commissioned to cover comes first. Interesting problems outside the scope are noted, not chased, until the scope is done.
 
 ## Definite errors and suspicions are different lists
@@ -37,9 +37,19 @@ The canonical failure is the copied value. A figure that is correct for item A i
 
 Never promote a suspicion into the definite list because it feels right, and never quietly drop a suspicion because it could not be settled in the time available. A suspicion that disappears silently will be rediscovered later as a defect; a suspicion labelled honestly costs the reader one glance.
 
+## Fitness for purpose, completeness, and missing patterns
+
+Claim verification is not the whole review. Material can pass every factual check and still be wrong: designed for a purpose it does not serve, missing the case that matters most, elegant solution to a problem the reader does not have. A deep review judges that too, as its own pass, reported separately from the claim verdicts:
+
+- **Is the design fit for its stated purpose?** Name the purpose the artifact claims to serve, then test the design against it: the workflow it prescribes, the structure it imposes, the defaults it picks. A design that satisfies its own text but not its purpose is a finding.
+- **What is missing?** Look for the absent pattern: the edge case the design never mentions, the failure mode with no handling, the audience or input class silently assumed away. Missing things leave no trace in the text, so they are found by asking what a reader will hit that the artifact never planned for, not by reading harder.
+- **Does it solve the right problem?** Sometimes every claim is true and the design is competent, and the artifact is still aimed at the wrong target. Say so, with the evidence: the use case that fails, the need the design walks past.
+
+Report these as **design findings**, in their own list, distinct from definite factual issues: each one names the purpose or use case it fails, the missing pattern or case, and what would settle whether it matters. Never bury a design finding inside the factual lists to make the claim coverage look worse, and never let clean claim coverage read as an endorsement of the design.
+
 ## Coverage is the deliverable
 
-The review's output has two halves, and both are mandatory:
+Use the report shape in `references/report-template.md`. The review's output has two halves, and both are mandatory:
 
 - **Issues found,** each with evidence and the anchor it failed against.
 - **What was checked and found clean,** enumerated by category, so the reader can see the shape of the coverage.

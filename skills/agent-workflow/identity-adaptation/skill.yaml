@@ -1,5 +1,5 @@
 name: "identity_adaptation"
 title: "Identity Adaptation (Growing a Personality)"
-description: "Grow a durable, personal identity with the user over time: identity files the agent owns, a feedback contract where the user corrects in plain words and the agent rewrites its own files, voice disciplines that keep replies human, and a periodic self-review for drift."
-category: "Personal"
+description: "Grow a durable, personal identity with the user over time: identity files the agent owns, a feedback contract where the user corrects in plain words and the agent rewrites its own files, voice disciplines that keep replies human, and a periodic self-review for drift. Use when setting up a persona, when the user renames you or changes your vibe, or whenever the user critiques your tone, vibe, formatting, or behaviour."
+category: "Agent Workflow"
 include_in_prompt: true

@@ -48,11 +48,13 @@ Smite 1 is a different game with a different item shop, but its items and metas 
 python3 ~/workspace/custom-skills/smite-2-builds/scripts/fetch_build.py <god> --role <role>
 ```
 
-- Pass the role as Jungle, Solo, Mid, ADC or Support. SmiteBrain calls the ADC role Carry, in both the page path and its data, and the script maps ADC to it. Run with `--json` to build the answer card, which is the default way to answer. Use `--compact` only for the plain text fallback format.
+- Pass the role as Jungle, Solo, Mid, ADC or Support. SmiteBrain calls the ADC role Carry, in both the page path and its data, and the script maps ADC to it. Run with `--json` to build the answer card, which is the default way to answer. Use `--compact` only for the plain text fallback format. Pass `--aspect <substring>` to filter the sample to one aspect before aggregation; if no sampled build uses that aspect, the script says so and exits without emitting a build.
 
 - Read the script output as evidence with limits. The sample is the 10 most recent top player builds for that god and role, counts such as 7/10 are the support behind each pick, and the starter may be recorded in its evolved form, so the script groups starters by family line.
 
 - Treat any item the data returns without an icon as suspect until verified. SmiteBrain sometimes serves a pre-rename name with no icon for an item that was renamed in a later patch, and the script already maps the known case, Brawler's Ruin to Brawler's Beat Stick, renamed in OB15. Verify a new suspect against the SmiteBrain items index or the official Smite 2 wiki before it goes on a card, and never annotate an item with a mechanic such as anti-heal unless the current patch item text says so.
+
+- Fill the six slots with completed Tier 3 items only. Match data records what a player held at match end, so unfinished Tier 1 and Tier 2 components appear in final builds, and a component is not a build item. The script checks each candidate's tier on its SmiteBrain item page and drops known components from the core and flex. (Learned 2026-10-24 when a Skeggox, a Tier 2 component, shipped as a sixth item.)
 
 - Take the skill order from the same script run. It extracts the ability level order of the best matching SmiteSource build for the role and the ability names from SmiteBrain, and reports the start sequence, the max priority and the ultimate levels.
 
@@ -101,12 +103,6 @@ python3 ~/workspace/custom-skills/smite-2-builds/scripts/fetch_build.py <god> --
 
 - Run the script once per request. Do not loop it across the roster, because the value is a single checked build at human scale.
 
-## Available connectors
-
-- Use `muse.connector_search` to find other connectors and `muse.skill_search` to find related skills.
-
-- If nothing here fits, look on the web for a maintained API or MCP server and set it up with [Custom Connectors and MCPs](/opt/muse/skills/custom-connector-setup/SKILL.md), or build a custom connector.
-
 ## Websites
 
 - [SmiteBrain](https://smitebrain.com/gods/thor/builds/jungle) for the primary build data. The pattern is /gods/<god slug>/builds/<role>, the script reads the same data as JSON, and the page header states the current patch and hourly update claim to verify against the script output.
@@ -115,4 +111,4 @@ python3 ~/workspace/custom-skills/smite-2-builds/scripts/fetch_build.py <god> --
 
 - [SmiteFire](https://www.smitefire.com/smite/god/thor-22) for written guide rationale only. The pattern is /smite/god/<god slug>-<site id>, the id differs per god, and every guide there needs the Smite 2 tag and date check from the cross-check section before any of it is used.
 
-Last verified: 2026-10-23 from a Muse VM. SmiteBrain returned live Open Beta 46 data with a match timestamp from the same day. The script produced full six slot builds for Thor, Pele, Bastet and Fenrir in Jungle, with skill order extraction confirmed on Thor, Pele and Fenrir, and the card format is the compact one described above.
+Last verified: 2026-10-25 from a Muse VM. SmiteBrain returned live Open Beta 46 data with a match timestamp from the same day. The script produced full six slot builds for Thor, Pele, Bastet and Fenrir in Jungle, with skill order extraction confirmed on Thor, Pele and Fenrir, aspect filtering and the on-disk item-tier cache verified live, and the card format is the compact one described above.

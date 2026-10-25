@@ -21,7 +21,8 @@ from collections import defaultdict
 from datetime import date, datetime
 
 DATE_FORMATS = ["%Y-%m-%d", "%m/%d/%Y", "%Y/%m/%d", "%m-%d-%Y",
-                "%d/%m/%Y", "%b %d, %Y", "%B %d, %Y", "%d %b %Y", "%m/%d/%y"]
+                "%d/%m/%Y", "%b %d, %Y", "%B %d, %Y", "%d %b %Y", "%m/%d/%y",
+                "%d/%m/%y", "%d-%b-%Y", "%b %d %Y"]
 FEE_RE = re.compile(r"\b(INTEREST|FEE|FEES|NSF|OVERLIMIT|OVERDRAFT|"
                     r"SERVICE CHARGE|CASH ADVANCE|ANNUAL FEE)\b", re.I)
 DEFAULT_EXCLUDE = ["TRANSFER TO SAVINGS", "CREDIT CARD PAYMENT",
@@ -34,7 +35,7 @@ DEFAULT_CATEGORIES = {
                   "BULK BARN", "M&M FOOD"],
     "dining": ["TIM HORTONS", "MCDONALD", "STARBUCKS", "SUBWAY", "PIZZA",
                "RESTAURANT", "UBER EATS", "DOORDASH", "SKIPTHEDISHES",
-               "BARBURRITO", "SWISS CHALET", "KEG"],
+               "BARBURRITO", "SWISS CHALET", "KEG", "TACO BELL"],
     "telecom": ["ROGERS", "BELL", "TELUS", "FIDO", "KOODO", "VIRGIN PLUS",
                 "FREEDOM MOBILE"],
     "subscriptions": ["NETFLIX", "SPOTIFY", "APPLE.COM", "APPLE SERVICES",
@@ -59,11 +60,13 @@ def parse_date(text, date_format=None):
     Without a hint the historical DATE_FORMATS order applies."""
     text = (text or "").strip()
     formats = list(DATE_FORMATS)
-    hinted = {"DMY": "%d/%m/%Y", "MDY": "%m/%d/%Y"}.get(
-        (date_format or "").upper())
-    if hinted and hinted in formats:
-        formats.remove(hinted)
-        formats.insert(0, hinted)
+    hinted = {"DMY": ["%d/%m/%Y", "%d/%m/%y"],
+              "MDY": ["%m/%d/%Y", "%m/%d/%y"]}.get(
+        (date_format or "").upper(), [])
+    for fmt in reversed(hinted):
+        if fmt in formats:
+            formats.remove(fmt)
+            formats.insert(0, fmt)
     for fmt in formats:
         try:
             return datetime.strptime(text, fmt).date()
@@ -118,11 +121,18 @@ def merchant_key(description):
     return " ".join(tokens[:5]) or cleaned.strip()[:24]
 
 
-def find_col(headers, *needles):
-    for i, header in enumerate(headers):
-        low = header.lower()
-        if any(n in low for n in needles):
-            return i
+def find_col(headers, *needles, exclude=()):
+    """First header index matching a needle. Needles are tried in order
+    (needle priority beats column order, so "description" wins over a
+    "Transaction Date" header that happens to contain "transaction"),
+    and columns in exclude (already claimed by another role) are never
+    returned, so two roles cannot bind the same column."""
+    for needle in needles:
+        for i, header in enumerate(headers):
+            if i in exclude:
+                continue
+            if needle in header.lower():
+                return i
     return None
 
 
@@ -148,12 +158,22 @@ def ingest_csv(path, account, date_format=None, invert_amounts=False):
                          "(need Date plus Debit/Credit or Amount columns)")
     headers = rows[header_idx]
     date_i = find_col(headers, "date")
-    desc_i = find_col(headers, "description", "transaction", "details", "name")
+    desc_i = find_col(headers, "description", "transaction", "details",
+                      "name", "merchant", "memo",
+                      exclude=(date_i,) if date_i is not None else ())
     debit_i = find_col(headers, "debit", "withdrawal")
     credit_i = find_col(headers, "credit", "deposit")
     amount_i = find_col(headers, "amount")
     type_i = find_col(headers, "type")
     balance_i = find_col(headers, "balance")
+    if debit_i is not None and debit_i == credit_i:
+        # A single "Debit/Credit" column is an indicator, not a pair of
+        # money columns: both lookups bound the same index. Route it to
+        # the type role so the Amount branch below reads the amounts and
+        # takes their signs from the indicator ("DR"/"DEBIT" negative).
+        if type_i is None:
+            type_i = debit_i
+        debit_i = credit_i = None
     if not date_format:
         date_format = detect_slash_format(
             _cell(r, date_i) for r in rows[header_idx + 1:])
@@ -197,12 +217,17 @@ def ingest_csv(path, account, date_format=None, invert_amounts=False):
     return out
 
 
-MONEY_TOKEN = re.compile(r"^-?\(?\$?\d{1,3}(?:,\d{3})*\.\d{2}\)?$"
+MONEY_TOKEN = re.compile(r"^-?\(?\$?(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}\)?$"
                          r"|^-?\$[\d,]+(?:\.\d{2})?$"
                          r"|^-?\d{1,3}(?:,\d{3})+$")
+_MONTH_ALT = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
 DATE_LINE = re.compile(
-    r"^\s*(\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4}|"
-    r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2})\b\s*(.*)$")
+    r"^\s*(\d{4}-\d{2}-\d{2}"
+    r"|\d{1,2}/\d{1,2}/\d{2,4}"
+    r"|\d{1,2}-" + _MONTH_ALT + r"-\d{4}"
+    r"|" + _MONTH_ALT + r"\.?\s+\d{1,2}(?:,?\s+\d{4})?"
+    r"|\d{1,2}\s+" + _MONTH_ALT + r"\.?(?:\s+\d{4})?)"
+    r"\b\s*(.*)$", re.I)
 
 
 def _fix_years(rows, year, date_format=None):
@@ -210,19 +235,37 @@ def _fix_years(rows, year, date_format=None):
     current, prev_month, out = year, None, []
     for day_text, rest in rows:
         parsed = None
-        for fmt in ("%b %d",):
+        # Parse year-less month-name dates against a leap year (2024) so
+        # "Feb 29" survives; strptime's default year 1900 is not a leap
+        # year and used to reject it, silently dropping the row. The
+        # real year is assigned below.
+        cleaned = (day_text or "").replace(".", "")
+        for fmt in ("%Y %b %d", "%Y %d %b"):
             try:
-                parsed = datetime.strptime(day_text, fmt).date()
+                parsed = datetime.strptime(f"2024 {cleaned}", fmt).date()
+                break
             except ValueError:
                 pass
         if parsed is None:
-            out.append((parse_date(day_text, date_format), rest))
+            out.append((parse_date(cleaned, date_format), rest))
             continue
         if prev_month is not None and parsed.month < prev_month - 6:
             current += 1
         prev_month = parsed.month
-        out.append((date(current, parsed.month, parsed.day), rest))
+        try:
+            out.append((date(current, parsed.month, parsed.day), rest))
+        except ValueError:
+            out.append((None, rest))
     return out
+
+
+OPENING_BALANCE_PREFIXES = ("OPENING BALANCE", "PREVIOUS BALANCE",
+                            "BEGINNING BALANCE", "BALANCE FORWARD",
+                            "BALANCE BROUGHT FORWARD")
+
+
+def _is_opening_balance(upper_text):
+    return upper_text.startswith(OPENING_BALANCE_PREFIXES)
 
 
 def ingest_text(path, account, year, date_format=None):
@@ -240,7 +283,7 @@ def ingest_text(path, account, year, date_format=None):
             # date filter below would drop it and the first transaction's
             # sign could not be balance-checked. Capture its amount here.
             stripped = line.strip()
-            if stripped.upper().startswith("OPENING BALANCE"):
+            if _is_opening_balance(stripped.upper()):
                 tokens = stripped.split()
                 while tokens:
                     value = parse_amount(tokens.pop())
@@ -271,7 +314,7 @@ def ingest_text(path, account, year, date_format=None):
         if day is None:
             continue
         upper_desc = description.upper()
-        if upper_desc.startswith("OPENING BALANCE"):
+        if _is_opening_balance(upper_desc):
             if amounts:
                 prev_balance = amounts[-1]
             continue
@@ -293,6 +336,12 @@ def ingest_text(path, account, year, date_format=None):
                 amount = delta if delta else amount
             else:
                 uninferred += 1
+        elif len(amounts) < 3 and (balance is None
+                                   or prev_balance is None):
+            # No balance pair to check this row's printed sign against
+            # (single-amount row, or no opening/previous balance yet);
+            # count it so the report can flag it for a spot-check.
+            uninferred += 1
         if balance is not None:
             prev_balance = balance
         out.append({"date": day.isoformat(), "description": description,
@@ -367,7 +416,7 @@ def mask_text(text):
     masking is an output-layer rule."""
     if not text:
         return text
-    text = _GROUPED_DIGITS.sub("***", str(text))
+    text = _GROUPED_DIGITS.sub(lambda m: "***" + m.group(0)[-2:], str(text))
     return _LONG_DIGITS.sub(lambda m: "***" + m.group(0)[-2:], text)
 
 
@@ -386,10 +435,20 @@ def audit(txns, config):
     def is_transfer(t):
         return any(r.search(t["description"]) for r in exclude_res)
 
+    # Keywords match on word boundaries, never as raw substrings, so
+    # METRO does not claim METROLINX and RENT does not claim TORRENT.
+    # Multi-word phrases are tried before single tokens across all
+    # categories, so "TACO BELL" (dining) beats "BELL" (telecom) and
+    # "UBER EATS" beats "UBER". The sort is stable: within each class,
+    # category order from the merged dict is preserved.
+    cat_patterns = [(name, w, re.compile(r"\b" + re.escape(w) + r"\b"))
+                    for name, words in categories.items() for w in words]
+    cat_patterns.sort(key=lambda p: 0 if " " in p[1] else 1)
+
     def category_of(t):
         upper = t["description"].upper()
-        for name, words in categories.items():
-            if any(w in upper for w in words):
+        for name, _word, pattern in cat_patterns:
+            if pattern.search(upper):
                 return name
         return "other"
 
@@ -397,13 +456,23 @@ def audit(txns, config):
                                     "transfers": 0.0})
     fees, cat_month = [], defaultdict(float)
     outflows = []
+    refund_re = re.compile(r"REFUND|RETURN|REVERSAL", re.I)
+    outflow_merchants = {t["merchant"] for t in txns
+                         if t["amount"] < 0 and not is_transfer(t)}
     for t in txns:
         month = t["date"][:7]
         if is_transfer(t):
             monthly[month]["transfers"] += abs(t["amount"])
             continue
         if t["amount"] > 0:
-            monthly[month]["income"] += t["amount"]
+            if refund_re.search(t["description"]) \
+                    or t["merchant"] in outflow_merchants:
+                # A purchase refund or return is not income: it offsets
+                # spending, in total and in its category-month bucket.
+                monthly[month]["spending"] -= t["amount"]
+                cat_month[(category_of(t), month)] -= t["amount"]
+            else:
+                monthly[month]["income"] += t["amount"]
         elif t["amount"] < 0:
             monthly[month]["spending"] += -t["amount"]
             outflows.append(t)
@@ -418,11 +487,14 @@ def audit(txns, config):
     for merchant, items in groups.items():
         if len(items) < 3:
             continue
-        days = [date.fromisoformat(i["date"]) for i in items]
-        span = (max(days) - min(days)).days
+        # Deduplicate charge dates before computing gaps: same-day
+        # duplicate charges would otherwise inject 0-day gaps, drag the
+        # median interval to 0, and drop a genuinely recurring merchant.
+        days = sorted({date.fromisoformat(i["date"]) for i in items})
+        span = (days[-1] - days[0]).days
         if span < 40:
             continue
-        gaps = [(b - a).days for a, b in zip(sorted(days), sorted(days)[1:])]
+        gaps = [(b - a).days for a, b in zip(days, days[1:])]
         interval = statistics.median(gaps) if gaps else 0
         if not interval:
             continue
@@ -436,19 +508,23 @@ def audit(txns, config):
         stable = min(amounts) > 0 and max(amounts) / min(amounts) <= 1.2
         if stable:
             recurring.append(entry)
-            # A price increase only means something on a charge whose
-            # baseline was flat, such as a subscription.
-            first = amounts[0]
-            if len(amounts) >= 3 and amounts[1] == first and first > 0 \
-                    and amounts[-1] > first * 1.03:
-                creep.append({"merchant": merchant, "from": round(first, 2),
-                              "to": round(amounts[-1], 2),
-                              "pct": round((amounts[-1] - first) / first
-                                           * 100, 1),
-                              "first_date": items[0]["date"],
-                              "last_date": items[-1]["date"]})
         else:
             frequent_variable.append(entry)
+        # A price increase only means something on a charge whose
+        # baseline was flat, such as a subscription. This is checked
+        # independently of the stability band: a hike larger than 20%
+        # makes the series "unstable" by the ratio test above, and
+        # nesting the check inside it would hide exactly the creep it
+        # exists to catch.
+        first = amounts[0]
+        if len(amounts) >= 3 and amounts[1] == first and first > 0 \
+                and amounts[-1] > first * 1.03:
+            creep.append({"merchant": merchant, "from": round(first, 2),
+                          "to": round(amounts[-1], 2),
+                          "pct": round((amounts[-1] - first) / first
+                                       * 100, 1),
+                          "first_date": items[0]["date"],
+                          "last_date": items[-1]["date"]})
     recurring.sort(key=lambda r: -r["monthly_cost"])
     frequent_variable.sort(key=lambda r: -r["monthly_cost"])
 
@@ -513,7 +589,8 @@ def audit(txns, config):
 
     return {
         "as_of": as_of.isoformat(),
-        "accounts": sorted({t["account"] for t in txns if t.get("account")}),
+        "accounts": sorted({mask_text(t["account"]) for t in txns
+                            if t.get("account")}),
         "period": [txns[0]["date"], txns[-1]["date"]] if txns else [],
         "transaction_count": len(txns),
         "monthly": {m: {k: round(v, 2) for k, v in vals.items()}

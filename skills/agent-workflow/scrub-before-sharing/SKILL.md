@@ -1,6 +1,6 @@
 ---
 name: scrub-before-sharing
-description: Prepare a file, folder, skill or connector bundle for someone outside the household by stripping the user's private data from every file in it and verifying the clean copy before it is shared.
+description: Prepare a file, folder, skill or connector bundle for someone outside the household by stripping the user's private data from every file in it and verifying the clean copy before it is shared. Use when a bundle, document, skill or repo is about to be handed to someone outside the household, sent for an outside review, or published.
 ---
 
 # Scrub Before Sharing
@@ -25,7 +25,9 @@ description: Prepare a file, folder, skill or connector bundle for someone outsi
 
 ## Verify the clean copy and report the exclusions
 
-- Run a text search over the finished share copy (the bundled `scripts/scrub_scan.py`, or your platform's file-search tool) for each value and identifier class you removed, and fix any hit before the copy goes anywhere.
+- Verify the finished share copy before it goes anywhere: run the bundled `scripts/scrub_scan.py` over it as a mechanical first pass (identifier shapes: emails, phone numbers, postal and ZIP codes, home paths, IP addresses, key-shaped tokens), then run `muse.exec` text searches for each specific value you removed, and fix any hit.
+
+- Make the extra patterns personal, every time: pass the user's own identifiers to the scanner via `--extra-regex` as a matter of routine — their name, handles, employer, and city, taken from their profile. The built-in patterns only catch shapes; the most likely leftover is the user's own name sitting in a default, a comment, or an example, and no generic pattern will catch it.
 
 - Report the verification as counts the user can check, naming what was removed or replaced and stating that the search found zero remaining hits.
 
@@ -42,12 +44,6 @@ description: Prepare a file, folder, skill or connector bundle for someone outsi
 - Third-party material gets a link, not a mirror. Only redistribute third-party work when its license clearly allows it, with attribution and the license text traveling with the copy.
 
 - Run the final sweep on the exact tree being pushed, not on a copy scrubbed earlier. Check the ignore rules cover caches, local configs and generated files, and read the first commit's author line before the push happens.
-
-## Available connectors
-
-- If your agent platform has a connector or skill directory, search it to find related connectors and skills.
-
-- If nothing here fits, look on the web for a maintained API or MCP server and set it up with [Custom Connectors and MCPs](/opt/muse/skills/custom-connector-setup/SKILL.md), or build a custom connector.
 
 ## Alternatives for better results
 

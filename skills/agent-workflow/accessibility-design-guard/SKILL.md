@@ -30,6 +30,8 @@ Work the list in this order; later items assume the earlier ones hold.
 6. **Interactive long text gets a sane tab order.** A reading passage where every word is a lookup target must not become hundreds of tab stops. Use a roving tabindex (the passage is one tab stop; arrow keys plus Home/End move within it) and put a skip link before the passage so keyboard users can jump past it entirely. Non-interactive text stays non-interactive, and the pointer lookup behaviour is preserved exactly.
 7. **Timed tasks offer a time accommodation that never moves the pass bar.** See the accommodations section below; the checklist-level rule is that the accommodation exists wherever a countdown gates a scored result, and that it changes time only.
 8. **Status and recording indicators are labelled in the UI language system.** Recording states, timers, and progress announcements are real strings in the translation registry, labelled for assistive technology, and worded for the interaction as it actually works now (a toggle says "press again to send", a hold button says "hold"). A hardcoded status line in one language is a defect even when it is the product's own primary language.
+9. **Focus is not obscured by fixed or sticky elements (WCAG 2.2 SC 2.4.11, Focus Not Obscured — Minimum).** When an element receives keyboard focus, no sticky header, fixed bottom action bar, floating audio or chat bar, or consent banner may cover it. Give the scrollable content `scroll-margin-top` / `scroll-margin-bottom` at least equal to the fixed elements' heights, and prove it by tabbing through the surface, not by reading the CSS.
+10. **Pointer targets meet the minimum size (WCAG 2.2 SC 2.5.8, Target Size — Minimum).** Interactive targets are at least 24×24 CSS px, or carry equivalent non-overlapping spacing so a 24 px target fits without hitting a neighbour. Primary mobile touch controls should be 44×44 CSS px. An undersized target that claims the spacing exception gets its spacing measured, not assumed.
 
 ## Accommodations design
 
@@ -48,6 +50,8 @@ An accommodation that is not part of the record did not happen. Build timed-task
 - **Run the full gate output to files** and cite summary lines from the files, per `verify-before-shipping`.
 
 ## Design guards as tests
+
+A worked guard-test pattern — named patterns with recorded reasons, zero-count assertions, self-cleaning exemptions, and negative controls — is in `references/guard-test-pattern.md`.
 
 After the audit, convert the design system's enforceable rules into a guard test suite that runs in CI:
 

@@ -31,6 +31,16 @@ Rules for this list:
 
 Suspicions are labelled unverified wherever they are mentioned, including summaries of this report. They are never deleted for being unsettled; an unsettled suspicion is carried forward visibly or handed to the owner as an open item.
 
+## Design findings (fitness for purpose, completeness, missing patterns)
+
+Judged separately from the factual lists above. One entry per finding:
+
+| # | Purpose or use case it fails | What is missing or misaimed | What would settle it |
+|---|---|---|---|
+| 1 | The stated purpose, workflow, or reader need the design does not serve | The absent pattern, unhandled case, or wrong problem, named concretely | The evidence or test that decides whether it matters |
+
+If the design is fit for purpose and nothing material is missing, say so in one line here. Silence in this section reads as "not judged", not as "fine".
+
 ## Coverage (checked and found clean)
 
 Enumerated by category, not by adjective:

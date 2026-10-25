@@ -7,13 +7,18 @@ This script decodes that payload and aggregates the top-player match builds
 for one god and role into a single consensus build.
 
 Usage:
-    fetch_build.py <god> [--role <role>] [--json]
+    fetch_build.py <god> [--role <role>] [--json] [--compact]
+                   [--aspect <substring>]
 
 Examples:
     fetch_build.py thor --role jungle
     fetch_build.py "Da Ji" --role jungle --json
 
-Stdlib only. One request per invocation (two on fallback). Human scale use.
+Stdlib only. A run makes a handful of page fetches (the builds page,
+the patch header, ability names, the SmiteSource cross-check) plus one
+item-tier lookup per distinct item in the sample; item tiers are
+cached on disk under /tmp, so repeat runs fetch far fewer. Human
+scale use.
 """
 
 import argparse
@@ -146,6 +151,7 @@ STARTER_FAMILIES = {
     "leather cowl": "Leather Cowl line",
     "hunter's cowl": "Leather Cowl line",
     "leader's cowl": "Leather Cowl line",
+    "bumba's dagger": "Bumba's line",
     "bumba's cudgel": "Bumba's line",
     "bumba's hammer": "Bumba's line",
     "bumba's spear": "Bumba's line",
@@ -164,6 +170,22 @@ STARTER_FAMILIES = {
     "vampiric shroud": "Vampiric Shroud line",
     "blood-soaked shroud": "Vampiric Shroud line",
     "sacrificial shroud": "Vampiric Shroud line",
+    "conduit gem": "Conduit Gem line",
+    "archmage's gem": "Conduit Gem line",
+    "gem of focus": "Conduit Gem line",
+    "sands of time": "Sands of Time line",
+    "pendulum of the ages": "Sands of Time line",
+    "the alternate timeline": "Sands of Time line",
+    "alternate timeline": "Sands of Time line",
+    "gilded arrow": "Gilded Arrow line",
+    "sharpshooter's arrow": "Gilded Arrow line",
+    "ornate arrow": "Gilded Arrow line",
+    "diamond arrow": "Gilded Arrow line",
+    "war flag": "War Flag line",
+    "war banner": "War Flag line",
+    "spartan flag": "War Flag line",
+    "selflessness": "Selflessness line",
+    "heroism": "Selflessness line",
 }
 
 
@@ -180,12 +202,40 @@ def primary_role(builds):
     return counts.most_common(1)[0][0] if counts else None
 
 
-_TIER_CACHE = {}
+# Item tiers change rarely, so the per-process cache is also persisted
+# to a scratch file under /tmp and reloaded on the next run. A missing
+# or corrupt cache file is ignored silently; failed lookups (None) are
+# kept in memory only and never persisted, so a network hiccup cannot
+# poison later runs.
+_TIER_CACHE_PATH = "/tmp/smite2_item_tiers.json"
+
+
+def _load_tier_cache():
+    try:
+        with open(_TIER_CACHE_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+        if isinstance(data, dict):
+            return {str(k): v for k, v in data.items() if isinstance(v, str)}
+    except Exception:
+        pass
+    return {}
+
+
+def _save_tier_cache():
+    try:
+        with open(_TIER_CACHE_PATH, "w", encoding="utf-8") as fh:
+            json.dump(_TIER_CACHE, fh, sort_keys=True)
+    except Exception:
+        pass
+
+
+_TIER_CACHE = _load_tier_cache()
 
 
 def item_tier(slug):
     """Tier string ('Tier 3', ...) for an item slug from its SmiteBrain
-    page, or None when it cannot be determined. Cached per process."""
+    page, or None when it cannot be determined. Cached per process and
+    persisted under /tmp across runs."""
     if slug in _TIER_CACHE:
         return _TIER_CACHE[slug]
     tier = None
@@ -200,6 +250,8 @@ def item_tier(slug):
     except Exception:
         tier = None
     _TIER_CACHE[slug] = tier
+    if tier is not None:
+        _save_tier_cache()
     return tier
 
 
@@ -254,7 +306,15 @@ def aggregate(builds, role):
 
     starter = None
     if starter_families:
-        family, count = starter_families.most_common(1)[0]
+        # Family ties break toward the family with the strongest single
+        # form: three builds ending on the same evolved starter outvote
+        # three builds split across two forms of another line.
+        def family_rank(family):
+            best_form = starter_forms[family].most_common(1)[0][1]
+            return (starter_families[family], best_form)
+
+        family = max(starter_families, key=family_rank)
+        count = starter_families[family]
         form = starter_forms[family].most_common(1)[0][0]
         starter = dict(item_objs[form])
         starter["name"] = form
@@ -278,11 +338,16 @@ def aggregate(builds, role):
     # backfill from them only if fewer than six completed items exist.
     completed = [v for v in ordered if item_tier(v["slug"]) not in ("Tier 1", "Tier 2")]
     components = [v for v in ordered if item_tier(v["slug"]) in ("Tier 1", "Tier 2")]
-    ordered = completed + components
-    # A build always fills all six slots: the six most played distinct
-    # items, in typical buy order. Anything past the six is a flex swap.
-    core = sorted(ordered[:6], key=lambda v: v["avg_slot"])
-    flex = ordered[6:9]
+    # A build always fills all six slots with the most played distinct
+    # completed items, in typical buy order. Components backfill the
+    # core only when fewer than six completed items exist; flex is
+    # completed items beyond the six, never components.
+    if len(completed) >= 6:
+        core_pool = completed[:6]
+    else:
+        core_pool = (completed + components)[:6]
+    core = sorted(core_pool, key=lambda v: v["avg_slot"])
+    flex = completed[6:9]
 
     return {
         "sample": used,
@@ -295,9 +360,12 @@ def aggregate(builds, role):
 
 
 def god_title(name: str) -> str:
-    """Title-case a god name without mangling apostrophes inside a word:
-    "chang'e" -> "Chang'e" (str.title() would give "Chang'E")."""
-    return name.strip().lower().title().replace("'E", "'e").replace("'S", "'s")
+    """Title-case a god name for display/lookup: hyphens in a slug
+    become spaces ("da-ji" -> "Da Ji") and apostrophes inside a word
+    stay lowercase ("chang'e" -> "Chang'e"; str.title() alone would
+    give "Da-Ji" and "Chang'E")."""
+    cleaned = name.strip().lower().replace("-", " ")
+    return cleaned.title().replace("'E", "'e").replace("'S", "'s")
 
 
 def fetch_skills(god_display, role):
@@ -417,6 +485,9 @@ def main():
     ap.add_argument("--json", action="store_true", help="Emit JSON")
     ap.add_argument("--compact", action="store_true",
                     help="Emit the chat-ready compact build")
+    ap.add_argument("--aspect", default=None,
+                    help="Only sample builds whose aspect name contains "
+                         "this substring (case-insensitive)")
     args = ap.parse_args()
 
     god = god_slug(args.god)
@@ -449,11 +520,44 @@ def main():
         if effective_role:
             role_note = (f"no --role given; using the god's primary role "
                          f"in the sample ({effective_role})")
+            # The all-roles page mixes a few matches per role, so fetch
+            # the role endpoint for its full sample. If that fetch
+            # fails, fall back to the mixed page's subset for the role;
+            # the header's sample line reports whichever sample was
+            # actually aggregated.
+            refetch_path = {"adc": "carry", "carry": "carry"}.get(
+                effective_role, effective_role)
+            refetch_url = (f"{BASE}/gods/{god}/builds/{refetch_path}"
+                           f"/__data.json")
+            try:
+                role_page = decode_page(fetch(refetch_url))
+            except Exception:
+                role_page = None
+            if role_page:
+                page = role_page
+                source_url = refetch_url
         else:
             role_note = ("no --role given and the sample carries no role "
                          "data; pooling all roles")
         print(f"note: {role_note}", file=sys.stderr)
-    result = aggregate(page["builds"], effective_role)
+
+    builds = page["builds"]
+    if args.aspect:
+        needle = args.aspect.strip().lower()
+
+        def _aspect_name(build):
+            if not isinstance(build, dict):
+                return ""
+            view = item_view(build.get("aspect"))
+            return view["name"].lower() if view else ""
+
+        builds = [b for b in builds if needle in _aspect_name(b)]
+        if not builds:
+            print(f"No builds for aspect '{args.aspect}' in the current "
+                  f"sample for {god} ({effective_role or 'all roles'}).",
+                  file=sys.stderr)
+            return 1
+    result = aggregate(builds, effective_role)
     if not result:
         print(f"No {effective_role or 'any-role'} builds in the recent sample for {god}.",
               file=sys.stderr)
@@ -461,6 +565,8 @@ def main():
 
     result["god"] = god
     result["role"] = effective_role
+    if args.aspect:
+        result["aspect_filter"] = args.aspect
     if role_note:
         result["role_note"] = role_note
     result["patch"] = current_patch(god)
@@ -479,8 +585,9 @@ def main():
 
         god_name = " ".join(w.capitalize() for w in god.split("-"))
         role_name = (effective_role or "All roles").capitalize()
+        aspect_part = f" · aspect: {args.aspect}" if args.aspect else ""
         print(f"**{god_name} · {role_name}** · {result['patch'] or 'patch ?'}"
-              f" · {result['sample']} top builds, hourly data")
+              f" · {result['sample']} top builds, hourly data{aspect_part}")
         chain = [pair(result["starter"])] + [pair(v) for v in result["core"]]
         print(" → ".join(p for p in chain if p))
         bits = []
@@ -505,8 +612,9 @@ def main():
             return "(none in sample)"
         return f"{view['name']} ({view['count']}/{result['sample']})"
 
+    aspect_part = f" - aspect filter: {args.aspect}" if args.aspect else ""
     print(f"{god} - {effective_role or 'all roles'} - {result['patch'] or 'patch unknown'}"
-          f" - sample {result['sample']} top-player builds - {source_url}")
+          f" - sample {result['sample']} top-player builds{aspect_part} - {source_url}")
     starter = result["starter"]
     if starter:
         print(f"Starter: {starter['name']} [{starter['family']}]"

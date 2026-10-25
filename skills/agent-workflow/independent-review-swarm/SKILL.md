@@ -25,7 +25,7 @@ Name the exact state under review: the commit, tree, or document set, and how it
 
 ## Step 2: Assign lenses
 
-Decompose the review into independent lenses, each sized so one reviewer can cover it deeply in one pass. Typical lenses for a software-plus-content system: domain/content quality, exemplar fidelity, assessment integrity, runtime behaviour, backend correctness, frontend correctness, security, data layer, performance, dependencies, accessibility, design system, tests-and-gates reproducibility, deploy readiness, and a user walkthrough. The full catalog with scope notes is in `references/lens-catalog-and-templates.md`.
+Decompose the review into independent lenses, each sized so one reviewer can cover it deeply in one pass. Typical lenses for a software-plus-content system: domain/content quality, exemplar fidelity, assessment integrity, runtime behaviour, backend correctness, frontend correctness, security, data layer, performance, dependencies, accessibility, design system, tests-and-gates reproducibility, AI / grading systems, deploy readiness, and a user walkthrough. The full catalog with scope notes is in `references/lens-catalog-and-templates.md`.
 
 Always include one **adversarial lens**: its job is to test the claims the project makes about itself, one claim at a time, and try to refute them. Headline metrics survive because nobody attacks them; this lens exists to attack them.
 
@@ -54,7 +54,7 @@ Expect three failure modes, all observed in practice:
 - **Plausible, wrong, and alarming.** A confident claim about the data layer or the security posture that is simply false at the tree under review. The more consequential the claim, the more mechanical the check must be.
 - **Stale quotes.** The reviewer read an older rendering of a file; the live defect nearby is real but different from the one quoted. Fix the live defect, record the claim as corrected.
 
-Use exactly three dispositions for every claim: **verified**, **corrected**, **unverifiable** (with what would settle it). A claim corrected in the safe direction is still corrected; synthesis that silently upgrades reviewer claims into facts is how bad fixes get shipped.
+Use exactly four dispositions for every claim: **VERIFIED**, **CORRECTED**, **REFUTED**, **UNVERIFIABLE** (with what would settle it). Refuted means the claim was checked against the source and is false. Corrected means the live defect nearby is real but different from the one the reviewer quoted. A claim corrected in the safe direction is still corrected; synthesis that silently upgrades reviewer claims into facts is how bad fixes get shipped.
 
 ## Step 5: Synthesize
 

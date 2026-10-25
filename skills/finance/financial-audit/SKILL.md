@@ -1,6 +1,6 @@
 ---
 name: financial-audit
-description: Audit bills, spending, fees and debt deadlines from bank statements (CSV, PDF or screenshots), or Plaid where it is available. Read-only: finds overspending, subscription price creep, fees and deferred-interest deadlines. Never moves money.
+description: "Audit bills, spending, fees and debt deadlines from bank statements (CSV, PDF or screenshots), or Plaid where it is available. Read-only: finds overspending, subscription price creep, fees and deferred-interest deadlines. Never moves money."
 ---
 
 # Financial Audit

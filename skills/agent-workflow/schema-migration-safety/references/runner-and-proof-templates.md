@@ -47,6 +47,8 @@ for each migration in list order:
 report { appliedNow, skippedRecorded, adoptedPreLedger }
 ```
 
+**Fresh-only, defined.** A migration is marked fresh-only when it is a squashed baseline: instead of replaying history, it creates the full current schema in one file, and it exists for databases built from nothing. On a database that already has a base schema, everything the baseline creates is by definition already present, so the runner records it without running it (the branch in the pseudocode above). A migration that changes existing objects is never fresh-only; only a baseline squash earns the mark, and the mark belongs in the migration file's header where a reviewer can challenge it.
+
 Rules the pseudocode encodes: the record insert shares the body's transaction; adoption is one transaction and touches no data; a failure aborts the whole run rather than skipping ahead, because later migrations may depend on the failed one.
 
 ## Adoption decision table
@@ -57,6 +59,7 @@ Rules the pseudocode encodes: the record insert shares the body's transaction; a
 | none | absent | absent | Fresh | Apply the full list in order |
 | none | present | present | Complete pre-ledger | Seed ledger with all listed names, run nothing |
 | none | present | absent | Half-built | Replay the list, recording each as it completes |
+| migration unrecorded | present | — | Fresh-only baseline in the list | Record it without running; its content is by definition present in the base schema (see the definition above) |
 
 Choosing the footprint: pick an object created *only* by the newest pre-ledger migration — a table, a column, a named constraint. Probe it with the catalog (`to_regclass`, `information_schema`, or the engine's equivalent), not by attempting DDL.
 
@@ -112,3 +115,5 @@ END $$;
 ```
 
 The catalog guard makes the file replay-safe: a database where the constraint already landed (partial deploy, manual run) does not fail the migration. Remember the constraint validates existing rows at creation; a violating legacy row fails the migration, which is information — clean the data in an earlier migration, not by widening the set.
+
+**Large live tables.** Adding a CHECK constraint scans the whole table while holding an ACCESS EXCLUSIVE lock. Two defences, used together on any table that takes live writes: set `SET LOCAL lock_timeout = '5s';` inside the migration transaction, so a busy table fails the migration fast instead of queueing writes behind the scan; and add the constraint in the metadata-only form, `ADD CONSTRAINT ... CHECK (...) NOT VALID`, which takes only a brief lock, then run `VALIDATE CONSTRAINT` as a separate step — validation scans under a weaker lock that allows concurrent writes. The guard query above applies to both steps: check the catalog before adding, and before validating, so a partially landed constraint still replays safely.

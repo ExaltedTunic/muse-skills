@@ -10,7 +10,7 @@ Companion to `independent-review-swarm`. Pick lenses that match the system under
 | Exemplar fidelity | Models, templates, and sample answers measured against the standard they teach (length, required moves, stated criteria) | The exemplar, the standard, the measured gap (counts, not impressions) |
 | Assessment integrity | Whether scores mean what they claim: keys correct, totals sum, pass bars enforced, partial work cannot pass | Recomputed totals, traced scoring paths |
 | Runtime behaviour | What the running system actually does with the material: rendering, fallbacks, empty states, dead ends | Traced code paths, reproduced states |
-| Adversarial claim-testing | The project's own headline claims, attacked one by one | Each claim, the test applied, VERIFIED / REFUTED / UNVERIFIABLE |
+| Adversarial claim-testing | The project's own headline claims, attacked one by one | Each claim, the test applied, VERIFIED / CORRECTED / REFUTED / UNVERIFIABLE |
 | User walkthrough | The experience end to end in role: first-run, pacing, framing, where a real user stalls | Step-by-step narrative tied to specific screens or items |
 | Deploy readiness | Whether the exact target can ship: build, config, secrets scan, rollback surface | Command output, scan results, diff inventory |
 | Backend correctness | Server logic integrity: authorization scoping, write paths, evidence/state mutation rules | Route-by-route walk, file-and-line per finding |
@@ -59,14 +59,23 @@ decided any grade at or below <weak grade>.
 # Swarm Synthesis — <target> (<date>)
 
 <N> fresh reviewers, none of them builders. Full reports: <location>.
-Load-bearing claims spot-verified against source before adoption (marked ✓).
+Load-bearing claims verified against source before adoption (marked ✓).
+This step is not optional and not sampled away.
 
 ## Verdicts at a glance
 | # | Lens | Verdict |
 |---|------|---------|
 
-## Verified spot checks ✓
-- <claim> — CONFIRMED / CORRECTED / REFUTED, with the locator.
+## Verified claim checks ✓
+- <claim> — VERIFIED / CORRECTED / REFUTED / UNVERIFIABLE, with the locator
+  (and, for UNVERIFIABLE, what would settle it).
+
+## Definite fixes vs suspicions
+- Definite: <findings whose evidence the synthesizer verified>
+- Suspicions: <findings labelled suspected, each with the check that would settle it>
+
+## Pre-existing vs introduced
+- <finding>: pre-existing | introduced by the work under review
 
 ## Bucket A — fix-now (verified, bounded, no behaviour change)
 ## Bucket B — owner-call (decision required; finding, options, costs)

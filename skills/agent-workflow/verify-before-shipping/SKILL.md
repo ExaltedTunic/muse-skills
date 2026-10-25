@@ -40,6 +40,7 @@ Documentation is a set of claims about the code. Check the load-bearing ones mec
 - **Cross-check the help.** Run `--help` (or the platform equivalent) and compare the flag list against every flag the docs and docstrings mention, in both directions.
 - **Every file, path, and function the docs name exists** at the stated place with the stated name.
 - **Behavioural sentences get a test,** not a nod. "Omitting X selects the primary Y" is a claim about code: run it with X omitted and watch what it selects. If the sentence and the behaviour disagree, one of them is wrong, and it is not automatically the sentence.
+- **For a skill bundle, check the packaging.** Strict-parse the SKILL.md frontmatter and the skill.yaml sidecar (an unquoted colon in a description is enough to break a strict parser), and verify every file bundled under `scripts/` and `references/` is named or linked in SKILL.md. An unlinked reference is dead weight the agent will never load, and an unlisted script is a capability the docs never made good on.
 
 ## Evidence discipline
 
