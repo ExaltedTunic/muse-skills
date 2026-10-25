@@ -2,7 +2,7 @@
 
 Custom skills for Muse personal AI agents, built and tested in daily use and shared with friends. A living collection: new skills land here as they are built, and existing ones get updated in place as they improve.
 
-Skills are organized by purpose under `skills/`: [agent workflow](skills/agent-workflow/), [finance](skills/finance/), [shopping](skills/shopping/), [games](skills/games/), and [fitness](skills/fitness/). Each purpose folder has its own index page.
+Skills are organized by purpose under `skills/`: [agent workflow](skills/agent-workflow/), [finance](skills/finance/), [shopping](skills/shopping/), [games](skills/games/), [fitness](skills/fitness/), and [career](skills/career/). Each purpose folder has its own index page.
 
 Every skill in this repo has passed a whole-folder privacy scrub before publishing. Personal skills and third-party skills are not mirrored here; where a skill builds on someone else's work, it links upstream instead.
 
@@ -54,6 +54,12 @@ How your agent works with you day to day.
 | Skill | What it does | Needs |
 | --- | --- | --- |
 | [fitness-coach](skills/fitness/fitness-coach/) | Build and run a research and results driven workout program: a thorough intake interview before anything is written, a program designed from the user's goals, schedule, equipment and constraints, then week-to-week coaching from their logged results. | Nothing extra |
+
+### [Career](skills/career/)
+
+| Skill | What it does | Needs |
+| --- | --- | --- |
+| [norway-job-search-flow](skills/career/norway-job-search-flow/) | Verification-first pipeline for a Norway job search that needs a skilled-worker residence permit: private search box, five-source sweep, Brønnøysund and staffing-register verification, ledger-first shortlist, written-evidence permit status, and per-listing approval before anything is sent or submitted. | Nothing extra. The candidate supplies a private profile and ledger outside the skill |
 
 ## Portability
 

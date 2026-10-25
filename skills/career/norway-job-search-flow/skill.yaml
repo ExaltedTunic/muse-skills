@@ -1,0 +1,5 @@
+name: "norway_job_search_flow"
+title: "Norway Job Search Flow"
+description: "Run a verification-first job search for roles in Norway when the candidate needs a skilled-worker residence permit: define a private search box, sweep Norwegian sources, verify employers in Brønnøysund and the staffing register, track permit support only on written evidence, keep a ledger as the source of truth, and tailor applications only after verification and per-listing approval."
+category: "Career"
+include_in_prompt: true
