@@ -1,5 +1,9 @@
 # Changelog
 
+## Update, 2026-10-25 — fitness-coach intake completion checklist
+
+- **fitness-coach:** a completion checklist now sits between the interview and the profile. Individualized programming, macro targets, or a starter week require every applicable gate fact (adult status, eating-disorder history, pregnancy) to have been asked and answered or explicitly declined, the input facts the targets depend on (sex, height, current and goal weight) to be collected before any number is given, and each numerical heuristic to carry its source and date with research-supported ranges distinguished from coaching defaults. Declined answers are respected without probing and route to general educational support.
+
 ## Update, 2026-10-25 — fix program from two full external reviews
 
 Every verified finding from two independent full-collection reviews was fixed and re-proven against the fixture that exposed it. The regression suites now ship in [tests/](tests/) and run in CI.

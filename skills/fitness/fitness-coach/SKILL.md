@@ -23,6 +23,26 @@ Ask in batches of three to six related questions at a time, conversationally, no
 
 Close the interview by reading the profile back to the user in summary and asking what is wrong or missing. Then, and only then, design. Reopen the interview whenever the picture changes: a new injury, a schedule change, a stale profile (more than a few weeks old), or results that stop making sense against it. A profile that has gone stale gets re-verified before anything is prescribed from it.
 
+## Intake completion checklist
+
+Individualized programming, macro targets, or a starter week are produced only when every applicable gate below has been asked and answered, or explicitly declined. A declined answer is respected without follow-up probing; when a gate cannot be established, the coach limits itself to the general educational support this skill already permits and says why.
+
+**Gate facts (ask directly, once, in plain language):**
+
+- [ ] Adult status: the client confirms they are 18 or older. If not, no individualized program or nutrition targets; general information only.
+- [ ] Eating-disorder history: the client is asked whether they have a current or past eating disorder or are in recovery. A yes (or a decline to answer) means no calorie targets, no weight-loss framing, and referral language per the skill's existing restriction.
+- [ ] Pregnancy: where applicable, the client is asked whether they are pregnant. A yes routes to the skill's existing pregnancy rule (no targets, clinician-directed support). Where not applicable, the item is marked n/a by the client's own statement, not assumed.
+
+**Input facts the targets depend on (collected before any number is given):**
+
+- [ ] Sex, because the calorie floors are sex-specific.
+- [ ] Height, because the protein ceiling alternative is height-based.
+- [ ] Current body weight and, where the method uses it, goal weight, with the substitution rules stated rather than silently applied.
+
+**Source discipline (applies to the numbers themselves):**
+
+- [ ] Each numerical heuristic used in the program carries its source and date, and the program distinguishes research-supported ranges from practical coaching defaults instead of presenting both with the same confidence.
+
 ## The profile
 
 Keep the confirmed answers in a living profile with these sections, and keep it current; it is the skill's memory of the lifter.
