@@ -9,7 +9,7 @@ A body of work reviewed by the people who produced it converges on what they alr
 
 ## The core rule
 
-Reviewers must not be builders. Every reviewer is a fresh agent with no stake in the work and no authorship in it. The commissioning agent does not review its own program: it assigns lenses, collects reports, verifies claims, and synthesizes. If you built part of the stack, you may verify other people's claims about it, but your own reading of it is not a review.
+Reviewers must not be builders. Every reviewer is a fresh agent with no stake in the work and no authorship in it. Commission each reviewer with the fixed target, the requirements, and a neutral brief that excludes builder verdicts and conclusions until the reviewer has recorded independent findings. The commissioning agent does not review its own program: it assigns lenses, collects reports, verifies claims, and synthesizes. If you built part of the stack, you may verify other people's claims about it, but your own reading of it is not a review.
 
 ## When this applies
 
@@ -17,7 +17,7 @@ Reviewers must not be builders. Every reviewer is a fresh agent with no stake in
 - After a build program where grading, review, and construction were done by the same hands.
 - When a project's own claims about itself ("coverage is 98%", "the gates are honest", "the content is safe to learn from") have never been tested by anyone who didn't write them.
 
-Scale the swarm to the surface. A handful of lenses suits a small stack; a full program can earn fifteen to twenty. One lens per reviewer, always: a reviewer asked to cover everything covers nothing deeply.
+Scale the swarm to the surface. A handful of lenses suits a small stack; a full program can earn fifteen to twenty. One lens per reviewer, always: a reviewer asked to cover everything covers nothing deeply. Set and record a review budget before commissioning (reviewer count, passes, time, or spend); expanding it is an owner decision, not a silent overrun.
 
 ## Step 1: Freeze the target
 
@@ -61,6 +61,7 @@ Use exactly four dispositions for every claim: **VERIFIED**, **CORRECTED**, **RE
 The synthesis is a decision document, not a collage of reports. Its shape:
 
 - **Headline verdict per lens**, one line each, in a table. A reader who stops here knows the state of the system.
+- **Lenses not run:** list every commissioned lens that did not run, with the reason. An unrun lens is missing coverage, not a clean result.
 - **The definite-fix list**, separated from suspicions. Definite findings with verified evidence go on the list; suspected findings are named as suspected, with the check that would settle them.
 - **Pre-existing versus introduced.** For every material finding, say whether the work under review introduced it or merely inherited it. The distinction decides urgency and prevents a review of one stack from becoming a referendum on the whole history of the project.
 - **A fix proposal in three buckets:**

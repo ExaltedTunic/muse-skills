@@ -17,6 +17,7 @@ A language course built by hand-waving drifts: word lists nobody delivers, model
 
 - **Assign every module a CEFR band** and derive its constraints from the band, not from taste: per-level caps on input-sentence length (for example 15 words at A2, slightly more at A2+), text-length floors and ceilings, and production targets.
 - **State targets as numbers.** "More input" is not a target. Reading words, unique listening minutes, and receptive lemmas per band are (see the budget below). Every later measurement is a delta against those numbers.
+- **Calibration caveat:** the numeric targets and gates in this playbook are starting points calibrated on one production course. Treat them as diagnostics inside a CEFR can-do/rubric evaluation, not universal CEFR mandates or proof of proficiency, task quality, or learning validity; re-derive them for the target language, learners, and can-do requirements.
 
 ## Lesson anatomy
 
@@ -58,14 +59,14 @@ The measurement definitions and worked templates behind this section (delivery m
 ## Assessment integrity
 
 - **Every scored question is keyed to its text.** Verify each answer key against the passage it claims to test, programmatically where the format allows. A key that drifted from its text teaches the learner that being right is wrong.
-- **Model answers must provably satisfy the stated minimum.** Written exits: model word count ≥ the task's `minWords`. Spoken exits: apply the duration invariant, model words ÷ speaking rate (use 2.0 words/second) ≥ 0.8 × the stated `minSeconds`. Check this over **all** exits, including the ones your gated check's denominator skips (see metric honesty).
+- **Model answers must provably satisfy the stated minimum.** Written exits: model word count ≥ the task's `minWords`. Spoken exits: apply the duration invariant, model words ÷ speaking rate (use 2.0 words/second) ≥ the stated `minSeconds`. Check this over **all** exits, including the ones your gated check's denominator skips (see metric honesty).
 - **Pass bars at parity across modes.** A spoken exit and its written twin are the same claim about the learner, so they are scored to the same standard (for example overall score ≥ 70 AND task completion ≥ 70 in both modes). Do not let one mode become the soft option.
 - **Spoken-duration ladders.** When the course ends in a timed spoken performance (an exam interaction, an interview), build the durations up in steps across the final modules, each unit's exits a rung, so the target performance is rehearsed progressively instead of appearing as a cliff at the end.
 - **Server-resolved grading anchors.** Where an AI or human grader scores production, prompt, criteria, and length anchors come from the server's copy of the task, never from the client's request. A grader that trusts client-sent criteria grades whatever the client says the task was.
 
 ## Generated audio
 
-- **Pre-generate the course's own audio; runtime synthesis is a fallback** for learner-submitted text and error paths. Pre-generation fixes cost, voice, and quality in advance and makes every listening asset reviewable before a learner hears it. Listening minutes are one of the three budget currencies, so generation belongs in the tranche plan, with its cost estimated like any other line item and the engine policy decided before the tranche starts, not mid-build.
+- **Pre-generate the course's own audio; runtime synthesis is a fallback** for learner-submitted text and error paths. Pre-generation fixes cost, voice, and quality in advance and makes every listening asset reviewable before a learner hears it. Listening minutes are one of the three budget currencies, so generation belongs in the tranche plan, with its cost estimated like any other line item and the engine policy decided before the tranche starts, not mid-build. Before generation, estimate the batch against current provider pricing and state the approved budget and maximum call count; stop or switch engines at those limits, treating any quota refusal only as a fallback signal.
 - **Keep every asset registered in a manifest** that validation checks against storage. The curriculum-level point is accountability: at any moment you can prove which audio exists, which assets went stale after a transcript edit, and how many unique minutes the course actually contains. Validation should report missing, stale, and orphaned assets as separate counts, not one boolean; quote all three.
 - **Record provenance per asset** (engine and voice, in the manifest entry). A course built over months will mix engines; provenance is what lets you budget regeneration, explain a voice change between units, and decide what to re-record when quality standards move.
 - For pipeline mechanics (codec choice as a compatibility trade-off, non-deterministic regeneration churn, orphan lifecycle in shared storage, and engine cost policy), see the `generated-audio-pipeline` skill.

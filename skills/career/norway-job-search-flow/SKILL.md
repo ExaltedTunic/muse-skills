@@ -5,7 +5,7 @@ description: "Run a verification-first job search for roles in Norway when the c
 
 # Norway Job Search Flow
 
-A pipeline for a cross-border job search where a role has to pass two tests at once: it has to be a real career fit, and it has to work for a Norwegian skilled-worker residence permit. The method is verification first. Do not spend tailoring time on a vacancy until the employer, the employment arrangement, and the likely permit path have been checked.
+A pipeline for a cross-border job search where a role has to pass two tests at once: it has to be a real career fit, and it has to work for a Norwegian skilled-worker residence permit. The method is verification first. Verify the employer and the likely permit path before tailoring; an unknown employment arrangement is recorded as a classification item and resolved with the application rather than blocking tailoring.
 
 This skill contains rules only. The candidate's personal facts, target list, application history, contacts, and documents belong in a private candidate profile and a private ledger outside the skill.
 
@@ -25,7 +25,7 @@ Before the first sweep, the candidate writes a private search profile. Keep it o
 - Availability windows, such as a planned Norway trip when in-person interviews are possible.
 - Timing priorities. Do not invent an offer-by deadline unless the candidate sets one explicitly.
 
-Update the private profile when the candidate confirms a fact changes. Do not fork personal facts into the reusable method.
+Update the private profile when the candidate confirms a fact changes. Do not fork personal facts into the reusable method. Outreach residence and authorization wording is generated from the profile's verified residence facts; a template that assumes an abroad applicant is only that branch, never a universal script.
 
 ## Objective and eligibility gate
 
@@ -39,15 +39,15 @@ Either condition failing is a blocker.
 Eligibility by employment arrangement:
 
 - **Direct**: employed by the Norwegian entity on Norwegian payroll. Eligible to keep verifying.
-- **Staffing**: conditionally eligible. Only when the employer is in Arbeidstilsynet's staffing register and a client assignment can be confirmed up front where UDI requires it. Permits through staffing arrangements can run one year at a time. If either condition fails, the role is blocked, not parked hopefully.
+- **Staffing**: conditionally eligible. Only when Arbeidstilsynet records the employer as authorised (`godkjent`) in the staffing register and a client assignment can be confirmed up front where UDI requires it. Permits through staffing arrangements can run one year at a time. If either condition fails, the role is blocked, not parked hopefully.
 - **Employer of record**: hold. Do not tailor or apply unless the provider confirms in writing that it will act as the employer on the skilled-worker application. Default assumption: these arrangements usually require existing Norwegian work authorization.
 - **Contractor**: blocked for an employment-based permit route. Park it unless the candidate deliberately wants to explore a separate non-employment path.
-- **Unknown**: the default. Most postings do not say. Unknown is an open question to resolve through the posting, the employer's careers page, or the permit question, before tailoring work is spent on the role.
+- **Unknown**: the default. Most postings do not say. Unknown does not block tailoring: record it as a classification item and resolve it with the permit question sent with the application. Only a confirmed arrangement the candidate cannot accept (for example, a confirmed employer of record the candidate has ruled out) blocks or parks the role.
 
 Work-authorization facts to keep straight:
 
 - The candidate applies for the permit; the employer's part is confirming the job offer through UDI's system when that step applies. Check the current UDI checklist before relying on the exact flow, because the steps for applications from abroad can change.
-- The candidate cannot start the role until the permit is granted. Never promise a start date that ignores permit processing.
+- The candidate cannot start the role until the permit is granted, unless the police have issued a confirmation of early employment start (tidlig arbeidsstart) for this employer. Never promise a start date that ignores permit processing or the conditions of such a confirmation.
 - The job normally has to be full-time; UDI accepts 80 percent or more for this route. Verify against the current checklist.
 - Remote work has to be part of the job the permit is granted for. When an offer is close, ask for the home-office arrangement to be stated in the offer.
 
@@ -66,13 +66,13 @@ Qualification screening rules:
 
 ## Location and language screening
 
-Take office locations from Brønnøysund, using the registered address and sub-units, not just the city named in the posting. A company can advertise in one city and still have an office inside the candidate's range. If a commute estimate is uncertain or close to the limit, record it as "check" and let the candidate decide.
+Keep four location fields distinct: the legal/registered address, the vacancy's worksite as stated in the posting, any client-assignment site, and the remote/on-site agreement. Use the vacancy worksite, or written employer confirmation of it, for the commute decision. Take registered addresses and sub-units from Brønnøysund to discover and cross-check possible locations; registry data does not override the posting's worksite. A company can advertise in one city and still have an office inside the candidate's range, but that possibility is a question to confirm, not a substitute worksite. If a commute estimate is uncertain or close to the limit, record it as "check" and let the candidate decide.
 
 For roles beyond the commute limit, apply the candidate's remote rule from the private profile. A common workable rule is: viable only when the role is remote from the planned home base and required on-site presence is quarterly or less. Anything more frequent goes to Parked with the reason "on-site frequency", unless the candidate overrides it for a specific role.
 
 Language screening for Norwegian requirements:
 
-- Park, rather than drop, when a requirement section (krav or kvalifikasjoner) includes phrases such as "flytende norsk", "norsk muntlig og skriftlig", "beherske norsk", "skandinavisk språk er et krav", or "gode norskkunnskaper".
+- Before parking on a language phrase, compare it with the candidate profile's recorded Norwegian level. If that level plausibly meets the phrasing (for example, "gode norskkunnskaper" against a recorded B2 or higher), do not park on that ground; note the requirement in the ledger instead. Park, rather than drop, when a requirement section (krav or kvalifikasjoner) includes phrases such as "flytende norsk", "norsk muntlig og skriftlig", "beherske norsk", "skandinavisk språk er et krav", or "gode norskkunnskaper" and the requirement exceeds the recorded level, or when no level is recorded.
 - If the same kind of phrase appears under "ønskelig" or "fordel" (desired or an advantage), note it but do not park the role for language.
 - Positive signals: the posting is written in English, it says English is the working language, it mentions an international team, or it mentions relocation support. These also raise the role in shortlist sorting.
 
@@ -136,9 +136,9 @@ Automatic triggers, so the check does not depend on reading the ad's tone:
 - The activity or purpose text mentions "utleie av arbeidskraft", "bemanning", or consultancy services delivered at clients, regardless of code.
 - An older code appears in legacy data: SN2007 used 62.020 for IT consultancy. Treat 62.020 as a legacy trigger if it shows up in older records or screenshots. Note that 62.100 under SN2025 is computer programming, not consultancy, and is not a trigger by itself.
 
-Then search Arbeidstilsynet's register of staffing agencies (bemanningsforetaksregisteret) for the organisation number.
+Then search Arbeidstilsynet's register of staffing agencies (bemanningsforetaksregisteret) for the organisation number. Record the enterprise's authorisation status (`godkjent` / `søknad under behandling` / `ikke godkjent`), the source, and the check date. Only `godkjent` counts as authorised for eligibility; `ikke godkjent` is a hard negative, and `søknad under behandling` is unresolved and treated as not yet authorised.
 
-- If the employer is registered, record staffing as "registered". For these employers, UDI can require a list of planned assignments confirmed by clients, and permits can run one year at a time. The permit question for these employers must ask whether a client assignment can be confirmed up front.
+- If the status is `godkjent`, record staffing with that status, source, and check date. For these employers, UDI can require a list of planned assignments confirmed by clients, and permits can run one year at a time. The permit question for these employers must ask whether a client assignment can be confirmed up front.
 - If the arrangement looks like an employer of record, default the permit-support status to unlikely. Change it only on written confirmation that the provider will act as the employer on a skilled-worker application.
 
 ### 3. Permit-support status
@@ -168,11 +168,11 @@ Keep one durable ledger, one record per listing, updated in place by key. A JSON
 
 Useful fields:
 
-- Key, company, organisation number, title, location.
+- Key, company, organisation number, title, legal/registered address, vacancy worksite, client-assignment site (if any), and remote/on-site agreement.
 - Source IDs and URLs.
 - Deadline (søknadsfrist).
 - Employer verdict and employment arrangement.
-- Staffing status.
+- Staffing authorisation status (`godkjent` / `søknad under behandling` / `ikke godkjent`), source, and check date.
 - Permit-support status and its evidence.
 - Requirement flags, such as a hard degree requirement, a language blocker, or an on-site question.
 - Commute estimate in minutes, or "check".

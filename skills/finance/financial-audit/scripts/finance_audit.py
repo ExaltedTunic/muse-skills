@@ -6,7 +6,7 @@ Usage:
     finance_audit.py ingest-csv statement.csv [--account "TD Chequing"] [--out txns.jsonl] [--date-format DMY|MDY] [--invert-amounts]
     finance_audit.py ingest-text statement.txt [--account "TD Chequing"] [--year 2026] [--out txns.jsonl] [--date-format DMY|MDY]
     finance_audit.py ingest-plaid plaid-transactions.json [--out txns.jsonl]
-    finance_audit.py audit txns.jsonl [more.jsonl ...] --config config.json [--out report.md] [--json-out summary.json]
+    finance_audit.py audit txns.jsonl [more.jsonl ...] --config config.json [--out report.md] [--json-out summary.json] [--as-of YYYY-MM-DD]
 
 Normalized transaction: {"date", "description", "merchant", "amount"
 (negative = money out, positive = money in), "balance", "account"}.
@@ -14,6 +14,7 @@ Normalized transaction: {"date", "description", "merchant", "amount"
 import argparse
 import csv
 import json
+import math
 import re
 import statistics
 import sys
@@ -111,6 +112,13 @@ def parse_amount(text):
         value = float(text)
     except ValueError:
         return None
+    if not math.isfinite(value):
+        # float() accepts "NaN", "inf" and overflowing exponents; those
+        # are not amounts, and letting one through would poison the
+        # JSONL with invalid JSON and a transaction that is neither
+        # income nor spending. Treat them as unparseable so the row is
+        # skipped with the usual accounting.
+        return None
     return -value if negative else value
 
 
@@ -150,12 +158,15 @@ def ingest_csv(path, account, date_format=None, invert_amounts=False):
     for i, row in enumerate(rows[:15]):
         joined = " ".join(row).lower()
         if "date" in joined and ("debit" in joined or "credit" in joined
-                                  or "amount" in joined):
+                                  or "amount" in joined
+                                  or "withdrawal" in joined
+                                  or "deposit" in joined):
             header_idx = i
             break
     if header_idx is None:
         raise SystemExit("error: could not find a statement header row "
-                         "(need Date plus Debit/Credit or Amount columns)")
+                         "(need Date plus Debit/Credit, Withdrawals/"
+                         "Deposits or Amount columns)")
     headers = rows[header_idx]
     date_i = find_col(headers, "date")
     desc_i = find_col(headers, "description", "transaction", "details",
@@ -420,15 +431,31 @@ def mask_text(text):
     return _LONG_DIGITS.sub(lambda m: "***" + m.group(0)[-2:], text)
 
 
-def audit(txns, config):
+def audit(txns, config, as_of=None):
     txns = sorted(txns, key=lambda t: t["date"])
-    as_of = date.fromisoformat(txns[-1]["date"]) if txns else date.today()
+    # Deadline math runs against an explicit evaluation date (the CLI's
+    # --as-of), defaulting to today. It is deliberately NOT the last
+    # transaction date: a statement that ended months ago would
+    # otherwise report promo deadlines as if no time had passed since.
+    # Pass the last transaction date to reproduce a retrospective audit.
+    if as_of is None:
+        eval_date = date.today()
+    elif isinstance(as_of, str):
+        eval_date = date.fromisoformat(as_of)
+    else:
+        eval_date = as_of
     exclude_res = [re.compile(p, re.I) for p in
                    DEFAULT_EXCLUDE + config.get("exclude_patterns", [])]
-    categories = {k: [w.upper() for w in v] for k, v in
-                  DEFAULT_CATEGORIES.items()}
-    for name, words in config.get("categories", {}).items():
-        categories[name] = [w.upper() for w in words]
+    # User-config categories take precedence over the built-ins: the
+    # config is the user's own statement about their merchants, so its
+    # patterns are tried first. A config category with a built-in's
+    # name replaces that built-in outright. With no config the pattern
+    # list is exactly the built-ins, as before.
+    config_categories = {k: [w.upper() for w in v] for k, v in
+                         config.get("categories", {}).items()}
+    builtin_categories = {k: [w.upper() for w in v] for k, v in
+                          DEFAULT_CATEGORIES.items()
+                          if k not in config_categories}
     budgets = config.get("budgets", {})
     threshold = config.get("large_threshold", 500)
 
@@ -441,9 +468,14 @@ def audit(txns, config):
     # categories, so "TACO BELL" (dining) beats "BELL" (telecom) and
     # "UBER EATS" beats "UBER". The sort is stable: within each class,
     # category order from the merged dict is preserved.
-    cat_patterns = [(name, w, re.compile(r"\b" + re.escape(w) + r"\b"))
-                    for name, words in categories.items() for w in words]
-    cat_patterns.sort(key=lambda p: 0 if " " in p[1] else 1)
+    def _cat_patterns(cats):
+        pats = [(name, w, re.compile(r"\b" + re.escape(w) + r"\b"))
+                for name, words in cats.items() for w in words]
+        pats.sort(key=lambda p: 0 if " " in p[1] else 1)
+        return pats
+
+    cat_patterns = (_cat_patterns(config_categories)
+                    + _cat_patterns(builtin_categories))
 
     def category_of(t):
         upper = t["description"].upper()
@@ -499,10 +531,22 @@ def audit(txns, config):
         if not interval:
             continue
         amounts = [-i["amount"] for i in items]
-        avg = statistics.mean(amounts)
+        # Magnitudes are totalled per charge date before averaging:
+        # two accounts paying the same merchant on the same day are
+        # two charges, and averaging per charge while the interval is
+        # computed from deduplicated dates would halve the estimated
+        # cost of parallel subscriptions. The stability and creep
+        # checks below keep using the per-charge series, which is what
+        # "this charge's amount changed" means.
+        per_day = defaultdict(float)
+        for i in items:
+            per_day[i["date"]] += -i["amount"]
+        day_amounts = [per_day[d] for d in sorted(per_day)]
+        avg = statistics.mean(day_amounts)
         entry = {"merchant": merchant, "count": len(items),
                  "cadence": cadence_label(interval),
-                 "average": round(avg, 2), "last": round(amounts[-1], 2),
+                 "average": round(avg, 2),
+                 "last": round(day_amounts[-1], 2),
                  "last_date": items[-1]["date"],
                  "monthly_cost": round(avg * 30.44 / interval, 2)}
         stable = min(amounts) > 0 and max(amounts) / min(amounts) <= 1.2
@@ -553,11 +597,16 @@ def audit(txns, config):
                  "min_payment": d.get("min_payment")}
         if d.get("promo_end"):
             end = date.fromisoformat(d["promo_end"])
-            days_left = (end - as_of).days
+            days_left = (end - eval_date).days
             entry["promo_end"] = d["promo_end"]
             entry["days_left"] = days_left
-            promo_balance = d.get("promo_balance") or d.get("balance")
-            if days_left > 0 and promo_balance:
+            # Explicit None check, not `or`: a promo_balance of 0 is a
+            # real figure (nothing left on the promo) and must not fall
+            # back to the full balance.
+            promo_balance = d.get("promo_balance")
+            if promo_balance is None:
+                promo_balance = d.get("balance")
+            if days_left > 0 and promo_balance is not None:
                 entry["required_monthly"] = round(
                     promo_balance / (days_left / 30.44), 2)
             elif days_left <= 0:
@@ -588,7 +637,8 @@ def audit(txns, config):
     large = [{**x, "description": mask_text(x["description"])} for x in large]
 
     return {
-        "as_of": as_of.isoformat(),
+        "as_of": eval_date.isoformat(),
+        "statement_as_of": txns[-1]["date"] if txns else None,
         "accounts": sorted({mask_text(t["account"]) for t in txns
                             if t.get("account")}),
         "period": [txns[0]["date"], txns[-1]["date"]] if txns else [],
@@ -620,22 +670,53 @@ def money_signed(value):
     return f"-${abs(value):,.2f}" if value < 0 else f"${value:,.2f}"
 
 
+def _debt_lines(s):
+    if not s["debts"]:
+        return []
+    lines = ["", "## Debts and promo deadlines", ""]
+    for d in s["debts"]:
+        line = (f"- {d['name']}: balance {money(d['balance'])}"
+                + (f", APR {d['apr'] * 100:.2f}%" if d.get("apr") else "")
+                + (f", about {money(d['monthly_interest'])} interest a "
+                   "month" if d.get("monthly_interest") else "")
+                + (f", minimum {money(d['min_payment'])}"
+                   if d.get("min_payment") else ""))
+        if d.get("promo_end"):
+            line += (f". Promo ends {d['promo_end']} "
+                     f"({d['days_left']} days left)"
+                     + (f", needs {money(d['required_monthly'])} a month "
+                        "to clear in time"
+                        if d.get("required_monthly") else "")
+                     + (f". {d['note']}" if d.get("note") else ""))
+        lines.append(line)
+    return lines
+
+
 def render_report(s, currency):
     if not s["period"]:
-        return "# Financial audit\n\nNo transactions in period.\n"
+        # No transactions, but configured debts and their deadlines
+        # were still computed and must not vanish from the report.
+        lines = ["# Financial audit", "",
+                 "No transactions in period. "
+                 f"Deadlines evaluated as of {s['as_of']}."]
+        lines += _debt_lines(s)
+        lines.append("")
+        return "\n".join(lines)
     lines = [f"# Financial audit, {s['period'][0]} to {s['period'][1]}",
              "",
              f"Currency {currency}. Covers {s['transaction_count']} "
              f"transactions from {', '.join(s['accounts']) or 'statements'}. "
-             f"Figures are as of {s['as_of']}. Own-account transfers and card "
-             "payments are excluded from income and spending.", "",
+             f"Statement figures are as of {s['statement_as_of']}. "
+             f"Deadlines evaluated as of {s['as_of']}. Own-account "
+             "transfers and card payments are excluded from income and "
+             "spending.", "",
              "## Monthly cash flow", "",
              "| Month | Income | Spending | Net | Moved between own accounts |",
              "|---|---|---|---|---|"]
     for month, v in s["monthly"].items():
         net = v["income"] - v["spending"]
         lines.append(f"| {month} | {money(v['income'])} | "
-                     f"{money(v['spending'])} | {money_signed(net)} | "
+                     f"{money_signed(v['spending'])} | {money_signed(net)} | "
                      f"{money(v['transfers'])} |")
     lines += ["", "## Recurring bills and subscriptions", "",
               "| Merchant | Cadence | Average | Last | Monthly cost |",
@@ -673,26 +754,10 @@ def render_report(s, currency):
         for month, total in months.items():
             over = budgets_hit.get((cat, month))
             budget = s.get("budgets", {}).get(cat)
-            lines.append(f"| {cat} | {month} | {money(total)} | "
+            lines.append(f"| {cat} | {month} | {money_signed(total)} | "
                          f"{money(budget) if budget else ''} | "
                          f"{money(over['over']) if over else ''} |")
-    if s["debts"]:
-        lines += ["", "## Debts and promo deadlines", ""]
-        for d in s["debts"]:
-            line = (f"- {d['name']}: balance {money(d['balance'])}"
-                    + (f", APR {d['apr'] * 100:.2f}%" if d.get("apr") else "")
-                    + (f", about {money(d['monthly_interest'])} interest a "
-                       "month" if d.get("monthly_interest") else "")
-                    + (f", minimum {money(d['min_payment'])}"
-                       if d.get("min_payment") else ""))
-            if d.get("promo_end"):
-                line += (f". Promo ends {d['promo_end']} "
-                         f"({d['days_left']} days left)"
-                         + (f", needs {money(d['required_monthly'])} a month "
-                            "to clear in time"
-                            if d.get("required_monthly") else "")
-                         + (f". {d['note']}" if d.get("note") else ""))
-            lines.append(line)
+    lines += _debt_lines(s)
     if s["possible_duplicates"]:
         lines += ["", "## Possible duplicate charges", ""]
         for d in s["possible_duplicates"]:
@@ -744,6 +809,13 @@ def main():
     p_audit.add_argument("--config")
     p_audit.add_argument("--out")
     p_audit.add_argument("--json-out")
+    p_audit.add_argument("--as-of", type=date.fromisoformat, default=None,
+                         metavar="YYYY-MM-DD",
+                         help="Evaluation date for deadline math; "
+                              "defaults to today. Pass the statement's "
+                              "last transaction date to reproduce a "
+                              "retrospective audit exactly as it stood "
+                              "when the statement was issued")
 
     args = parser.parse_args()
     if args.command == "ingest-csv":
@@ -763,7 +835,7 @@ def main():
         for path in args.files:
             with open(path, encoding="utf-8") as fh:
                 txns += [json.loads(line) for line in fh if line.strip()]
-        summary = audit(txns, config)
+        summary = audit(txns, config, as_of=args.as_of)
         report = render_report(summary, config.get("currency", "CAD"))
         if args.json_out:
             with open(args.json_out, "w", encoding="utf-8") as fh:

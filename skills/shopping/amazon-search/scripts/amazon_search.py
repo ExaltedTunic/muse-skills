@@ -37,6 +37,14 @@ BLOCK_MARKERS = ["captcha", "robot check", "type the characters",
                  # Amazon's Conditions of Use")
                  "unauthorized ai agent"]
 
+# Text Amazon renders on a genuine empty search results page (the
+# "No results for" heading and its hint line). Used only to tell a real
+# empty result set apart from an unrecognized error/interstitial page:
+# no result nodes plus none of these markers is NOT a successful
+# empty search.
+NO_RESULTS_MARKERS = ["no results for",
+                      "try checking your spelling or use more general terms"]
+
 # The storefront used when neither a flag nor AMAZON_MARKETPLACE is set.
 # Change this one line (or set the env var) to make another region your default.
 DEFAULT_MARKETPLACE = "ca"
@@ -74,20 +82,30 @@ MARKETPLACES = {
 
 # Reverse lookup for when a bare domain is given instead of a code.
 _DOMAIN_TO_CODE = {}
+_DOMAIN_TO_CURRENCY = {}
 for _code, (_domain, _currency) in MARKETPLACES.items():
     _DOMAIN_TO_CODE.setdefault(_domain, _code)
+    _DOMAIN_TO_CURRENCY.setdefault(_domain, _currency)
 
 
 def resolve_marketplace(value: str) -> tuple[str, str, str | None]:
-    """Return (code, domain, currency) for a code or bare domain."""
-    v = value.strip().lower().removeprefix("https://").removeprefix("http://")
-    v = v.removeprefix("www.").rstrip("/")
+    """Return (code, domain, currency) for a code or bare domain.
+
+    Only exact known storefronts are accepted: a code from MARKETPLACES,
+    or a bare domain from the same table with an optional "www." prefix.
+    Anything else is rejected, including lookalike hosts
+    (amazon.ca.evil.com), invented TLDs (amazon.example.invalid), and
+    values carrying a scheme, port, path, or userinfo: the domain goes
+    straight into the navigation URL, so a loose prefix match would let
+    a typo or a hostile value steer the browser off Amazon entirely."""
+    v = value.strip().lower()
     if v in MARKETPLACES:
         domain, currency = MARKETPLACES[v]
         return v, domain, currency
-    if v.startswith("amazon."):
-        return _DOMAIN_TO_CODE.get(v, v), v, dict(
-            (d, c) for d, c in MARKETPLACES.values()).get(v)
+    candidate = v.removeprefix("www.")
+    if candidate in _DOMAIN_TO_CODE:
+        return (_DOMAIN_TO_CODE[candidate], candidate,
+                _DOMAIN_TO_CURRENCY[candidate])
     raise SystemExit(
         f"error: unknown marketplace {value!r}. Use a code "
         f"({', '.join(sorted(set(MARKETPLACES)))}), a bare Amazon domain "
@@ -101,7 +119,7 @@ _PRICE_CODES = (r"EUR|USD|GBP|CAD|AUD|JPY|SEK|PLN"
                 r"|AED|BRL|CNY|EGP|INR|MXN|SAR|SGD|TRY|ZAR")
 _PRICE_LINE = re.compile(
     rf"(?:€|£|\$|¥|￥|₹|₺|R\$|{_PRICE_CODES})\s?[\d.,]+"
-    rf"|[\d.,]+\s?(?:€|£|¥|￥|₹|₺|{_PRICE_CODES})")
+    rf"|[\d.,]+\s?(?:€|£|\$|¥|￥|₹|₺|{_PRICE_CODES})")
 
 
 def _price_text(r) -> str | None:
@@ -144,10 +162,13 @@ def _price_text(r) -> str | None:
     return None
 
 
+_UNIT_PRICE_CODES = (r"EUR|USD|GBP|CAD|AUD|JPY|SEK|PLN"
+                     r"|AED|BRL|CNY|EGP|INR|MXN|SAR|SGD|TRY|ZAR")
 _UNIT_PRICE_LINE = re.compile(
-    r"\(?\s*(?:€|£|\$|¥|￥|₹|₺|R\$|EUR|USD|GBP|CAD|AUD|JPY|SEK|PLN"
-    r"|AED|BRL|CNY|EGP|INR|MXN|SAR|SGD|TRY|ZAR)"
-    r"\s?[\d.,]+\s*/\s*[A-Za-z0-9µ ]{1,24}\)?")
+    rf"\(?\s*(?:"
+    rf"(?:€|£|\$|¥|￥|₹|₺|R\$|{_UNIT_PRICE_CODES})\s?[\d.,]+"
+    rf"|[\d.,]+\s?(?:€|£|\$|¥|￥|₹|₺|R\$|{_UNIT_PRICE_CODES})"
+    rf")\s*/\s*[A-Za-z0-9µ ]{{1,24}}\)?")
 
 
 def _unit_price(r) -> str | None:
@@ -228,7 +249,11 @@ def search(query: str, limit: int, domain: str,
             if load_timed_out:
                 raise RuntimeError(
                     "Amazon page load timed out with no results rendered")
-            return []
+            if any(m in html for m in NO_RESULTS_MARKERS):
+                return []
+            raise RuntimeError(
+                "unrecognized Amazon page: no results and no "
+                "no-results marker")
         out = []
         for r in nodes[:limit]:
             t = r.query_selector("h2 span")

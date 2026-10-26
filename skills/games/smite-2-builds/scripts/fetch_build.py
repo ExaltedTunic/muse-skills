@@ -203,39 +203,68 @@ def primary_role(builds):
 
 
 # Item tiers change rarely, so the per-process cache is also persisted
-# to a scratch file under /tmp and reloaded on the next run. A missing
-# or corrupt cache file is ignored silently; failed lookups (None) are
-# kept in memory only and never persisted, so a network hiccup cannot
-# poison later runs.
+# to a scratch file under /tmp and reloaded on the next run. The cache
+# is versioned by patch label: tiers are only trusted when the file was
+# written under the current patch, because a tier recorded under an old
+# patch says nothing about the item today. A missing, corrupt, legacy
+# (unversioned) or stale-patch cache file is discarded and tiers are
+# refetched. A missing or corrupt cache file is ignored silently;
+# failed lookups (None) are kept in memory only and never persisted,
+# so a network hiccup cannot poison later runs.
 _TIER_CACHE_PATH = "/tmp/smite2_item_tiers.json"
+
+# The patch label the in-memory tier cache belongs to. main() sets it
+# via set_current_patch() before any tier lookup; other entry points
+# leave it None, in which case the disk cache is never trusted.
+_CURRENT_PATCH = None
+_TIER_CACHE = {}
+_TIER_CACHE_PATCH = object()  # sentinel: not yet loaded for _CURRENT_PATCH
+
+
+def set_current_patch(patch):
+    """Record the current patch label so the tier cache can be
+    versioned against it. Called by main() once the patch is known."""
+    global _CURRENT_PATCH
+    _CURRENT_PATCH = patch
 
 
 def _load_tier_cache():
+    if _CURRENT_PATCH is None:
+        return {}
     try:
         with open(_TIER_CACHE_PATH, encoding="utf-8") as fh:
             data = json.load(fh)
-        if isinstance(data, dict):
-            return {str(k): v for k, v in data.items() if isinstance(v, str)}
     except Exception:
-        pass
-    return {}
+        return {}
+    if not isinstance(data, dict) or data.get("patch") != _CURRENT_PATCH:
+        return {}
+    tiers = data.get("tiers")
+    if not isinstance(tiers, dict):
+        return {}
+    return {str(k): v for k, v in tiers.items() if isinstance(v, str)}
 
 
 def _save_tier_cache():
     try:
         with open(_TIER_CACHE_PATH, "w", encoding="utf-8") as fh:
-            json.dump(_TIER_CACHE, fh, sort_keys=True)
+            json.dump({"patch": _CURRENT_PATCH, "tiers": _TIER_CACHE},
+                      fh, sort_keys=True)
     except Exception:
         pass
 
 
-_TIER_CACHE = _load_tier_cache()
+def _ensure_tier_cache():
+    global _TIER_CACHE, _TIER_CACHE_PATCH
+    if _TIER_CACHE_PATCH is not _CURRENT_PATCH:
+        _TIER_CACHE = _load_tier_cache()
+        _TIER_CACHE_PATCH = _CURRENT_PATCH
 
 
 def item_tier(slug):
     """Tier string ('Tier 3', ...) for an item slug from its SmiteBrain
     page, or None when it cannot be determined. Cached per process and
-    persisted under /tmp across runs."""
+    persisted under /tmp across runs, versioned by patch label."""
+    _ensure_tier_cache()
     if slug in _TIER_CACHE:
         return _TIER_CACHE[slug]
     tier = None
@@ -302,6 +331,10 @@ def aggregate(builds, role):
         name, count = counter.most_common(1)[0]
         view = dict(item_objs[name])
         view["count"] = count
+        # Every sampled build either votes for a named entry or records
+        # none, so the empty share is part of the result: a winner with
+        # 2 of 10 votes must not read as the sample's consensus.
+        view["empty"] = used - sum(counter.values())
         return view
 
     starter = None
@@ -334,20 +367,24 @@ def aggregate(builds, role):
     # Match data records the items held at match end, so unfinished
     # Tier 1/2 components show up in final builds (e.g. a Skeggox that
     # never got completed). A recommended build is made of completed
-    # items only: drop known components from the core and flex, and
-    # backfill from them only if fewer than six completed items exist.
-    completed = [v for v in ordered if item_tier(v["slug"]) not in ("Tier 1", "Tier 2")]
-    components = [v for v in ordered if item_tier(v["slug"]) in ("Tier 1", "Tier 2")]
-    # A build always fills all six slots with the most played distinct
-    # completed items, in typical buy order. Components backfill the
-    # core only when fewer than six completed items exist; flex is
-    # completed items beyond the six, never components.
-    if len(completed) >= 6:
-        core_pool = completed[:6]
-    else:
-        core_pool = (completed + components)[:6]
-    core = sorted(core_pool, key=lambda v: v["avg_slot"])
+    # Tier 3 items only: known components are dropped entirely, and an
+    # item whose tier cannot be determined is unverified, not
+    # completed. Components and unverified items never enter the core
+    # or the flex; if fewer than six verified completed items exist,
+    # the build is incomplete and is reported as such, never padded.
+    completed = []
+    unverified = []
+    for v in ordered:
+        tier = item_tier(v["slug"])
+        if tier in ("Tier 1", "Tier 2"):
+            continue
+        if tier is None:
+            unverified.append(v)
+        else:
+            completed.append(v)
+    core = sorted(completed[:6], key=lambda v: v["avg_slot"])
     flex = completed[6:9]
+    missing = 6 - len(core)
 
     return {
         "sample": used,
@@ -356,6 +393,9 @@ def aggregate(builds, role):
         "aspect": top(aspects),
         "core": core,
         "flex": flex,
+        "complete": missing == 0,
+        "missing": missing,
+        "unverified": unverified,
     }
 
 
@@ -374,6 +414,9 @@ def fetch_skills(god_display, role):
     SmiteSource embeds its builds in the page payload, each with an
     abilityLevelOrder array. Pick the build for the requested role with
     the highest matchScore. Returns None when nothing usable is found.
+    When a role was requested and no record matches it, returns a dict
+    with only a "missing_note" key instead of substituting another
+    role's order: a skill order for the wrong role is worse than none.
     """
     import urllib.parse
 
@@ -446,6 +489,10 @@ def fetch_skills(god_display, role):
     wanted_set = aliases.get(wanted, {wanted}) if wanted else set()
     matched = [r for r in records
                if any(x.lower() in wanted_set for x in r["roles"])] if wanted else []
+    if wanted and not matched:
+        return {"missing_note":
+                f"SmiteSource has no build for {god_title(god_display)} "
+                f"in the {wanted} role; no skill order available."}
     pick = max(matched or records, key=lambda r: r["score"])
     order = pick["order"]
 
@@ -513,32 +560,45 @@ def main():
         print(f"No build data found for {god} on SmiteBrain.", file=sys.stderr)
         return 1
 
+    # Only current-patch data counts toward a build, so an unknown
+    # patch is fatal rather than a cosmetic gap in the header. The
+    # patch label also versions the item-tier cache.
+    patch = current_patch(god)
+    if not patch:
+        print(f"Could not read the current patch from SmiteBrain for "
+              f"{god}; only current-patch data counts, so no build was "
+              f"produced.", file=sys.stderr)
+        return 3
+    set_current_patch(patch)
+
     effective_role = role
     role_note = None
     if not effective_role:
         effective_role = primary_role(page["builds"])
-        if effective_role:
-            role_note = (f"no --role given; using the god's primary role "
-                         f"in the sample ({effective_role})")
-            # The all-roles page mixes a few matches per role, so fetch
-            # the role endpoint for its full sample. If that fetch
-            # fails, fall back to the mixed page's subset for the role;
-            # the header's sample line reports whichever sample was
-            # actually aggregated.
-            refetch_path = {"adc": "carry", "carry": "carry"}.get(
-                effective_role, effective_role)
-            refetch_url = (f"{BASE}/gods/{god}/builds/{refetch_path}"
-                           f"/__data.json")
-            try:
-                role_page = decode_page(fetch(refetch_url))
-            except Exception:
-                role_page = None
-            if role_page:
-                page = role_page
-                source_url = refetch_url
-        else:
-            role_note = ("no --role given and the sample carries no role "
-                         "data; pooling all roles")
+        if not effective_role:
+            print(f"Cannot determine a role for {god} from the sample: "
+                  f"it carries no role information. Re-run with "
+                  f"--role <role> instead of pooling all roles.",
+                  file=sys.stderr)
+            return 3
+        role_note = (f"no --role given; using the god's primary role "
+                     f"in the sample ({effective_role})")
+        # The all-roles page mixes a few matches per role, so fetch
+        # the role endpoint for its full sample. If that fetch
+        # fails, fall back to the mixed page's subset for the role;
+        # the header's sample line reports whichever sample was
+        # actually aggregated.
+        refetch_path = {"adc": "carry", "carry": "carry"}.get(
+            effective_role, effective_role)
+        refetch_url = (f"{BASE}/gods/{god}/builds/{refetch_path}"
+                       f"/__data.json")
+        try:
+            role_page = decode_page(fetch(refetch_url))
+        except Exception:
+            role_page = None
+        if role_page:
+            page = role_page
+            source_url = refetch_url
         print(f"note: {role_note}", file=sys.stderr)
 
     builds = page["builds"]
@@ -569,13 +629,18 @@ def main():
         result["aspect_filter"] = args.aspect
     if role_note:
         result["role_note"] = role_note
-    result["patch"] = current_patch(god)
+    result["patch"] = patch
     result["source"] = source_url
-    result["skills"] = fetch_skills(args.god, effective_role)
+    skills = fetch_skills(args.god, effective_role)
+    if skills and skills.get("missing_note"):
+        result["skills"] = None
+        result["skills_note"] = skills["missing_note"]
+    else:
+        result["skills"] = skills
 
     if args.json:
         print(json.dumps(result, indent=2))
-        return 0
+        return 0 if result["complete"] else 2
 
     if args.compact:
         def pair(view):
@@ -588,33 +653,56 @@ def main():
         aspect_part = f" · aspect: {args.aspect}" if args.aspect else ""
         print(f"**{god_name} · {role_name}** · {result['patch'] or 'patch ?'}"
               f" · {result['sample']} top builds, hourly data{aspect_part}")
+        if not result["complete"]:
+            print(f"INCOMPLETE BUILD: {len(result['core'])}/6 core items "
+                  f"({result['missing']} missing)")
         chain = [pair(result["starter"])] + [pair(v) for v in result["core"]]
         print(" → ".join(p for p in chain if p))
         bits = []
         if result["relic"]:
             bits.append(f"Relic: {result['relic']['name']}")
-        if result["aspect"]:
-            bits.append(f"Aspect: {result['aspect']['name']}")
+        asp = result["aspect"]
+        if asp:
+            if asp.get("empty", 0) > asp["count"]:
+                bits.append(f"Aspect: none recorded in most builds "
+                            f"({asp['empty']}/{result['sample']})")
+            else:
+                bits.append(f"Aspect: {asp['name']} "
+                            f"({asp['count']}/{result['sample']})")
+        elif result["sample"]:
+            bits.append(f"Aspect: none recorded in most builds "
+                        f"({result['sample']}/{result['sample']})")
         if result["flex"]:
             bits.append("Flex: " + ", ".join(v["name"] for v in result["flex"][:2]))
         if bits:
             print(" · ".join(bits))
+        if result["unverified"]:
+            print("Unverified (tier unknown, excluded): "
+                  + ", ".join(v["name"] for v in result["unverified"]))
         sk = result.get("skills")
         if sk:
             start = "-".join(str(x) for x in sk["start"])
             maxo = " > ".join(str(x["slot"]) for x in sk["max_order"])
             ult = "/".join(str(x) for x in sk["ult_levels"])
             print(f"Skills: start {start} · max {maxo} · ult {ult}")
-        return 0
+        elif result.get("skills_note"):
+            print(result["skills_note"])
+        return 0 if result["complete"] else 2
 
     def fmt(view):
         if not view:
             return "(none in sample)"
-        return f"{view['name']} ({view['count']}/{result['sample']})"
+        text = f"{view['name']} ({view['count']}/{result['sample']})"
+        if view.get("empty"):
+            text += f" - {view['empty']}/{result['sample']} with none recorded"
+        return text
 
     aspect_part = f" - aspect filter: {args.aspect}" if args.aspect else ""
     print(f"{god} - {effective_role or 'all roles'} - {result['patch'] or 'patch unknown'}"
           f" - sample {result['sample']} top-player builds{aspect_part} - {source_url}")
+    if not result["complete"]:
+        print(f"INCOMPLETE BUILD: {len(result['core'])} of 6 core slots "
+              f"filled ({result['missing']} missing)")
     starter = result["starter"]
     if starter:
         print(f"Starter: {starter['name']} [{starter['family']}]"
@@ -622,11 +710,21 @@ def main():
     else:
         print("Starter: (none in sample)")
     print(f"Relic:   {fmt(result['relic'])}")
-    print(f"Aspect:  {fmt(result['aspect'])}")
+    asp = result["aspect"]
+    if asp and asp.get("empty", 0) > asp["count"]:
+        print(f"Aspect:  none recorded in most builds "
+              f"({asp['empty']}/{result['sample']}); leading named: "
+              f"{asp['name']} ({asp['count']}/{result['sample']})")
+    else:
+        print(f"Aspect:  {fmt(asp)}")
     print("Core (six most played, in typical buy order):")
     for i, view in enumerate(result["core"], 1):
         icon = f" icon={view['icon']}" if view.get("icon") else ""
         print(f"  {i}. {view['name']} ({view['count']}/{result['sample']}){icon}")
+    if result["unverified"]:
+        print("Unverified (tier unknown, excluded from core):")
+        for view in result["unverified"]:
+            print(f"  - {view['name']} ({view['count']}/{result['sample']})")
     if result["flex"]:
         print("Flex pool (next most common):")
         for view in result["flex"]:
@@ -640,7 +738,9 @@ def main():
         ult = "/".join(str(x) for x in sk["ult_levels"])
         print(f"Skills: start {start} · max {maxo} · ult {ult}"
               f" (SmiteSource: {sk.get('source_title')})")
-    return 0
+    elif result.get("skills_note"):
+        print(result["skills_note"])
+    return 0 if result["complete"] else 2
 
 
 if __name__ == "__main__":

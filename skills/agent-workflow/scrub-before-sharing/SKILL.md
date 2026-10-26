@@ -35,6 +35,21 @@ description: Prepare a file, folder, skill or connector bundle for someone outsi
 
 - Keep the live original untouched during the scrub, and say plainly if a value reached a recipient before you caught it so the user can decide what to do next.
 
+## Scanner verdicts, coverage and the allowlist
+
+The bundled scanner (`scripts/scrub_scan.py`) reports findings as `path:line:label` plus a short SHA-256 fingerprint of the matched text. It never prints the matched text itself: a scan meant to prevent disclosure must not become another copy of the secret in tool output or logs. Use the fingerprint to confirm a value you already know; read the file directly to see the hit.
+
+Exit codes:
+
+- **0, clean**: everything enumerated was inspected and nothing was flagged.
+- **1, findings**: at least one pattern matched in inspected content.
+- **2, usage error**: the target does not exist.
+- **3, incomplete**: some content could not be inspected (undecodable or unreadable files, inaccessible directories, corrupt archives, unreadable archive members). The affected paths are listed. An exit 3 is not a clean bill: inspect or disposition the named content before the copy goes out. Exit 3 takes precedence over exit 1 when both apply.
+
+Every run prints a coverage line (enumerated / scanned / archives with members inspected / excluded / unreadable). A zero-hit result is only meaningful when the coverage accounts for every file in the tree. Archives (`.zip`, `.tar`, `.tar.gz`/`.tgz`) are opened and their text members scanned with the same patterns. The scanner's own source is excluded explicitly and reported as excluded ("scanner source, verify separately") because it legitimately contains the pattern shapes.
+
+Deliberately non-text artifacts (images, fonts, compiled blobs) that cannot be text-scanned can be excluded deliberately instead of failing the run: put a `.scrub-allowlist` file in the scanned root, one glob per line (for example `*.png`), matched against file name and root-relative path. Allowlisted files are counted and named in the output, and do not trigger the incomplete verdict. Allowlisting is a visible decision, not a silent skip: report every allowlisted path in the exclusion report.
+
 ## Publishing to a public repo
 
 - Build the repo from share copies only. Never make a live working folder public in place, and never push first and scrub later: history keeps everything.

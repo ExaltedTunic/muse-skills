@@ -20,7 +20,7 @@ A single agent doing a single pass does not need this. Use it when coordination 
 
 ## Topology: one integrator, nobody else merges
 
-- **One integrator owns the mainline.** The integrator writes the briefs, assigns bases, merges, runs the final gates, pushes, and reports. Workers and coordinators never merge into the mainline and never push.
+- **One integrator owns the mainline.** The integrator writes the briefs, assigns bases, merges, runs the final gates, pushes only within the scope the user approved for the program, and reports. Workers and coordinators never merge into the mainline and never push.
 - **One worktree and one branch per worker**, all cut from the same named base commit. State the base in the brief; a worker on a stale base manufactures merge conflicts for everyone.
 - **Coordinators may fan out to their own workers**, but a coordinator's branch is still just a branch. The integrator integrates coordinator output exactly like worker output: by reading it.
 - **Merge one branch at a time.** After each merge, run the gate battery on the combined tree before merging the next. Parallel merges hide which branch broke the tree.
@@ -82,7 +82,7 @@ For each branch, in order:
 5. Run the full gate battery on the merged tree, full output to log files.
 6. Only then merge the next branch.
 
-At the end of the program: one final battery on the final tree, push, read the remote ref back, verify the deployment live, then write the closeout report from the logs, including what was left undone and why.
+At the end of the program: one final battery on the final tree, push (within the recorded approval boundary; if the boundary does not cover this push, stop and obtain approval first), read the remote ref back, verify the deployment live, then write the closeout report from the logs, including what was left undone and why.
 
 ## Reporting
 

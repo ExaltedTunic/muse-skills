@@ -65,9 +65,9 @@ When the user gives feedback on your tone, behavior, or a specific response, you
 
 ### 1. Classify what the user is reacting to
 
-Before touching any files, figure out the scope of the feedback:
+Before changing any identity/persona files, figure out the scope of the feedback:
 
-- **A one-off miss in this specific turn:** you misread the room, ran too long, or missed a joke. Fix it right now in the conversation. Do not touch any files.
+- **A one-off miss in this specific turn:** you misread the room, ran too long, or missed a joke. Fix it right now in the conversation. Do not change any `IDENTITY.md`, `SOUL.md`, or other persona files for it; the daily-log capture in the contract above still happens.
 - **A durable fact or context preference:** something about the user's life, stack, schedule, or explicit workflow preferences. Route this to `MEMORY.md` and the dated daily log.
 - **A recurring behavioral pattern or vibe issue:** how you talk, how you react, how you structure replies, or who you are to them. This belongs in `SOUL.md` (how you behave) or `IDENTITY.md` (who you are).
 
@@ -101,7 +101,7 @@ Translate the user's complaint into the concrete conversational move that failed
 
 When a persistent change to `SOUL.md` is justified:
 
-- **Back up before you rewrite.** `SOUL.md` and `IDENTITY.md` have no version history by default, so a bad in-place edit cannot be rolled back. Before editing either file, save a dated backup copy (for example `backups/SOUL.<date>.md`), then make the edit. The backup is what turns a sharpening that lands badly into a recoverable mistake instead of permanent drift.
+- **Back up before you rewrite.** `SOUL.md` and `IDENTITY.md` have no version history by default, so a bad in-place edit cannot be rolled back. Before editing either file, save a verified backup in an explicit private backups directory under a timestamped filename (for example `backups/SOUL.<YYYYMMDD-HHMMSS>.md`, not a date-only name), read it back to confirm it is complete, then make the edit. Treat backups as copies of the originals for retention and for any forget/delete request: deleting or forgetting source material includes its backups. The backup is what turns a sharpening that lands badly into a recoverable mistake instead of permanent drift.
 - **Edit in place:** merge the new insight into the existing section where it belongs (Who you are, The main instinct, How you behave, Reading the moment, Boundaries) instead of tacking a new rule onto the bottom.
 - **Match the native voice of the file:** write in sharp contrasts and natural prose ("Nobody tells their friend news and wants a project plan back"), never in defensive system-prompt jargon ("Ensure conversational acknowledgment precedes task execution").
 - **Prune dead weight:** if a new rule replaces or sharpens a weaker line, delete the weaker line.

@@ -13,6 +13,7 @@ Keep a ledger table in the database itself: one row per applied migration, keyed
 
 - **The ledger row is written in the same transaction as the migration body.** A migration that fails rolls back unrecorded, so it will be retried; a migration that commits is recorded, so it never runs twice. Never record before applying, never record in a separate step after.
 - **The runner consults the ledger, not the files.** On each run it applies only listed migrations with no ledger row, in order. Idempotence stops being a load-bearing property of every historical file.
+- **One runner at a time, and the ledger is re-read as it goes.** The runner holds a single-runner lock for the whole run (in PostgreSQL, an advisory lock; elsewhere, the engine's named lock or an exclusive file lock) and re-reads the ledger inside each migration's transaction before deciding to skip. The applied set read once at startup is a stale snapshot the moment another process commits: without the lock, two runners can both see a migration as unapplied, both run its body, and commit two effects under one ledger row. The lock is the primary defence; the in-transaction re-read is the second, for when the lock is bypassed.
 - **Bootstrap is chicken-and-egg; solve it explicitly.** The ledger table must exist before the runner can decide whether the migration that creates it still needs to run. Carry the ledger DDL in the runner as a `CREATE TABLE IF NOT EXISTS`, and let the registered migration file carry the identical DDL as the reviewable record. Both are idempotent, so the two paths can never conflict.
 
 ## Adoption: databases that predate the ledger
@@ -20,10 +21,18 @@ Keep a ledger table in the database itself: one row per applied migration, keyed
 Existing databases have run some unknown prefix of the list. Do not re-run everything (the files were written for a younger schema) and do not seed the ledger on a hunch. Decide from evidence:
 
 - **Fresh:** no base schema. Apply the full list in order, recording each.
-- **Complete pre-ledger:** the ledger is empty, the base schema exists, *and* the footprint of the newest pre-ledger migration is present (an object only that migration creates). The old process applied the list in order on every successful run, so the newest footprint proves the whole prefix ran. Seed the ledger with every listed name, in one transaction, touching no data.
+- **Complete pre-ledger:** the ledger is empty, the base schema exists, *and* the footprint of the newest pre-ledger migration is present (an object only that migration creates). The old process applied the list in order on every successful run, so the newest footprint proves the whole prefix ran. Seed the ledger with the evidenced prefix only — every listed name up to and including that newest footprint-evidenced migration — in one transaction, touching no data. Any listed name after the prefix is not seeded; it runs normally in the same run.
 - **Half-built:** base schema exists but the newest footprint is missing. Fall back to replaying the list, recording each migration as it completes. This is only safe if the pre-ledger files really are idempotent; verify that claim on the oldest files before trusting the fallback, and say so in the commit.
 
-The footprint must be the *newest* migration's, not a convenient one. An older footprint proves an older prefix and would seed a lie.
+The footprint must be the *newest* migration's, not a convenient one. An older footprint proves an older prefix and would seed a lie. And the prefix is the whole of what any footprint proves: a list that has grown since the ledger was introduced contains names no pre-ledger footprint can evidence, and seeding those would record migrations that never ran — a new migration in the list would be attested as applied while its objects were never created, and every later run would skip it.
+
+## The boundary: migrations that cannot run in a transaction
+
+The same-transaction rule has a hard edge: some statements cannot run inside a transaction block at all. In PostgreSQL, `CREATE INDEX CONCURRENTLY` is the common one, and `ALTER TYPE ... ADD VALUE` carries the same class of restriction. Such migrations do not get an exemption from the ledger; they get a separate protocol, and the distinction must be explicit:
+
+- **Declared in the header.** A migration file containing nontransactional statements says so in its header (`transactional: no`). The transactional runner rejects an undeclared file that contains them, before anything runs, and never records such a file under the atomic rule.
+- **Ledgered on a verified postcondition, not on the statement.** The protocol is: probe the declared postcondition in the catalog (the index exists and is valid; the enum value is present); if it already holds, record the row and stop; otherwise run the statement outside a transaction, in an idempotent form; probe again; only then write the ledger row.
+- **The weaker guarantee is stated, not hidden.** There is no rollback: a crash between the statement and the ledger row leaves the change applied but unrecorded, and the next run recovers through the precheck, not through atomicity. The full protocol is in `references/runner-and-proof-templates.md`.
 
 ## Prove the runner before you trust it
 
@@ -33,8 +42,11 @@ Run the whole matrix against a disposable local database (an embedded or throwaw
 
 1. **Fresh apply:** empty database, full list applies, every migration recorded, result lists exactly what ran.
 2. **Idempotent rerun:** second run applies nothing and reports everything as already recorded.
-3. **Adoption:** a database built to the pre-ledger state (base schema plus newest footprint, plus a sentinel data row) adopts without re-running bodies, and the sentinel row is untouched.
+3. **Adoption:** a database built to the pre-ledger state (base schema plus newest footprint, plus a sentinel data row) adopts without re-running bodies, and the sentinel row is untouched. Run the variant where the list also contains a newer, post-ledger migration: only the evidenced prefix is seeded, the newer body runs in the same run, and its objects exist afterwards.
 4. **Failure atomicity:** a deliberately broken migration aborts, rolls back, and leaves no ledger row; the run reports which migration failed.
+5. **Fresh-only eligibility:** a database carrying the base table but missing one of the postconditions the baseline's header declares stops the run, which names the missing postcondition and records nothing.
+6. **Concurrent runners:** two runners started against the same database at the same time: one completes; the other waits or reports the lock held; no migration body runs twice.
+7. **Nontransactional protocol:** a header-declared concurrent-index migration is recorded only after the index is verified present and valid in the catalog, and an undeclared file containing the same statement is rejected before anything runs.
 
 If any path is unproven, the ledger is a hope, not a record. Follow verify-before-shipping for the evidence standard: capture full output, cite summary lines.
 
@@ -69,7 +81,7 @@ Some text columns are enums in all but name: a status, a tier, an event type, wr
 
 - **Enumerate every writer and validator** of the column across the codebase: route handlers, services, background jobs, seed scripts, and the validation schemas. The set is the union. Derivation has a known failure mode: the one writer nobody remembered (a feature in another subsystem appending its own event type) is exactly the value a hand-written list omits, and the constraint then rejects live traffic.
 - **Document exclusions in the migration header.** Columns that are genuinely open vocabularies or free text stay unconstrained *on purpose*; the header says which columns were considered and why each was left open, so a future reader does not "fix" the omission.
-- **Write replay-safe DDL:** guard each constraint's creation (check the catalog first, or an equivalent idempotent form) so the file can run against a database where it partially landed. Note honestly that a CHECK validates existing rows when added: run it against a production-shaped copy first if the table is large or the data is suspect.
+- **Write replay-safe DDL:** guard each constraint's creation with a catalog check scoped to the target table *and* the intended definition (a name-only guard is not enough: PostgreSQL allows the same constraint name on other tables, and the same name on the right table can carry a different set), so the file can run against a database where it partially landed — and fails loudly, rather than skipping, when what landed under that name is not the derived set. The full pattern is in `references/runner-and-proof-templates.md`. Note honestly that a CHECK validates existing rows when added: run it against a production-shaped copy first if the table is large or the data is suspect.
 
 ## One clock, owned retention, proven deletion
 

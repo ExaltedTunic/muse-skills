@@ -109,6 +109,8 @@ Run the checklist in this order; one row per surface touched.
 | 6 | Interactive long text: roving tabindex + skip link | Test: one tab stop for the passage; arrows/Home/End move; skip link jumps past |
 | 7 | Timed tasks: accommodation scales time only | Test: countdown reflects the preference; start screen shows effective time and unchanged pass mark; payload carries the accommodation |
 | 8 | Status/recording strings in the i18n registry | Search: no hardcoded status strings in the touched components |
+| 9 | Focus is not obscured by fixed or sticky elements | Behavioural test: tab through the surface; the focused element remains fully uncovered under this skill's stricter policy, with scroll margins offsetting fixed/sticky elements |
+| 10 | Pointer targets meet the minimum size | Measure: targets are at least 24×24 CSS px or carry qualifying non-overlapping spacing; primary mobile touch controls are 44×44 CSS px |
 
 ## 6. The dropped-check record
 

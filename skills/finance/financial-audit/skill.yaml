@@ -1,5 +1,5 @@
 name: "financial_audit"
 title: "Financial Audit"
-description: "Audit bills, spending, fees and debt deadlines from bank statements (CSV, PDF or screenshots), or Plaid where it is available. Read-only: finds overspending, subscription price creep, fees and deferred-interest deadlines. Never moves money."
+description: "Audit bills, spending, fees and debt deadlines from bank statements (CSV, PDF or screenshots), or Plaid where it is available. Use when the user asks where the money went, suspects fee or subscription creep, or wants bills, spending or a debt-deadline check. Read-only: finds overspending, subscription price creep, fees and deferred-interest deadlines. Never moves money."
 category: "Finance"
 include_in_prompt: true

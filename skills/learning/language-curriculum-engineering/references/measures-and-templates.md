@@ -13,7 +13,7 @@ Companion to `language-curriculum-engineering`. The numbers below are starting p
 | Delivered items (strict) | Declared items whose article-stripped catalog lemma occurs as a consecutive whole-token sequence inside the lesson's activity text only | No substring credit, no credit for homework, exit task, or the lesson's own word list |
 | Delivery band | Per-lesson delivered ÷ declared; every declaring lesson must sit in the top band (80–100%) | A course average hides a starved lesson; the band does not |
 | Companion similarity | Jaccard token similarity between a reading text and its listening companion | Hard ceiling 0.6; aim 0.2–0.35 |
-| Spoken model invariant | Model answer words ÷ 2.0 (words per second) ≥ 0.8 × stated `minSeconds` | The 2.0 wps rate is the course's own speech model; keep it consistent everywhere |
+| Spoken model invariant | Model answer words ÷ 2.0 (words per second) ≥ stated `minSeconds` | The 2.0 wps rate is the course's own speech model; keep it consistent everywhere |
 | Written model check | Model answer word count ≥ stated `minWords` | Apply to every exit, not only the ones a gated check samples |
 | Unglossed findings | Activities whose input text contains content words covered by no glossary entry, catalog item, or declared target | Target: zero. Gloss surface forms, not citation forms |
 | Taught-once findings | Grammar rules presented in exactly one module with no later recurrence | Each is either a build task (give it a later home) or a written waiver |

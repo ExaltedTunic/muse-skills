@@ -15,6 +15,11 @@ branch per coordinator, named in your assignment. Never push. Commits under
 the repo identity; never override it. <Integrator> is sole integrator; waves
 merge one at a time.
 
+## Approval boundary
+- May be pushed or published without re-asking: <targets, branches, releases,
+  or other actions covered by the user's approval for this program>.
+- Needs fresh approval before action: <anything outside that recorded scope>.
+
 ## Standing project rules
 - <Invariant 1, stated as a checkable condition.>
 - <Frozen surface: what must not be edited, and what to do if the work seems

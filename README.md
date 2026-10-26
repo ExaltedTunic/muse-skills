@@ -16,6 +16,14 @@ You do not need everything. Pick the one skill you want, or take the whole set.
 
 **Staying current:** watch or star this repo, and check [CHANGELOG.md](CHANGELOG.md) to see what is new or changed. Updates are drop-in replacements of the skill folder, unless the changelog says otherwise.
 
+## How skills compose
+
+When skills overlap, the domain skill for the user's actual goal leads the task; review and verification skills supply standards inside that work rather than taking it over. Orchestration skills activate only when delegation is actually part of the work. If two skills claim the same surface (for example, search versus price-history checking, or curriculum design versus audio generation), the skill matching the actual goal leads and the other supports it.
+
+## Verification
+
+The collection's regression checks live in [tests/](tests/) and run with the Python standard library alone: `python3 tests/run_all.py`. They cover the bundled scripts and the migration recipes with synthetic fixtures, and CI runs them on every push. The "Last verified" line in a playbook records the most recent live verification behind its claims.
+
 ## Catalogue by purpose
 
 ### [Agent workflow](skills/agent-workflow/)

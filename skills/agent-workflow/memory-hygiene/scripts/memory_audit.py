@@ -22,7 +22,12 @@ STALE_CAP = 10
 
 
 def normalized(line):
-    return re.sub(r"[^a-z0-9 ]", "", line.lower()).strip()
+    # Unicode-aware: casefold, keep Unicode letters and digits (so
+    # "Møter" and "Måter" stay distinct), drop punctuation and the
+    # underscore (a word character in regex, punctuation for prose),
+    # collapse whitespace.
+    kept = re.sub(r"[^\w\s]|_", "", line.casefold())
+    return " ".join(kept.split())
 
 
 def main():
