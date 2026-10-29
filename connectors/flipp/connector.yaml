@@ -1,0 +1,8 @@
+id: custom.flipp
+title: Flipp
+description: Search current flyer deals, list store flyers and read flyer contents near a Canadian postal code through Flipp's public backend. Use for grocery and retail deal lookups.
+include_in_prompt: true
+require_auth: false
+aliases: ["Wishabi", "flyers"]
+availability:
+  confidential_vm: false
