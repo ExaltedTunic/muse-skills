@@ -22,6 +22,7 @@ A single agent doing a single pass does not need this. Use it when coordination 
 
 - **One integrator owns the mainline.** The integrator writes the briefs, assigns bases, merges, runs the final gates, pushes only within the scope the user approved for the program, and reports. Workers and coordinators never merge into the mainline and never push.
 - **One worktree and one branch per worker**, all cut from the same named base commit. State the base in the brief; a worker on a stale base manufactures merge conflicts for everyone.
+- **Baseline the fresh worktree before anyone builds on it.** Detect existing isolation instead of nesting a new worktree inside one. Confirm the worktree directory is git-ignored before creating anything in it, so a whole tree never gets committed into the repo by accident. Then run project setup and the baseline gate battery in the fresh tree and record the result in the ledger: a dirty baseline reported up front makes every later failure attributable, and one discovered late makes them all ambiguous.
 - **Coordinators may fan out to their own workers**, but a coordinator's branch is still just a branch. The integrator integrates coordinator output exactly like worker output: by reading it.
 - **Merge one branch at a time.** After each merge, run the gate battery on the combined tree before merging the next. Parallel merges hide which branch broke the tree.
 - **The integrator does the integration work personally**: conflict resolution, cross-branch deduplication, and any fix pass the combination needs. That work is part of the program, not an admission that a worker failed.
@@ -46,8 +47,19 @@ Every delegation gets two documents. Workers should never have to guess a standi
 - **Explicit out-of-scope lines**: the neighbouring work that belongs to other workers or later waves. Most cross-branch damage comes from helpful workers wandering.
 - **What may legitimately move**: which pins, ratchets, or counts this work is expected to change, and the form of the justification (a dated in-file comment explaining the delta).
 - **Reporting contract**: per item, what was produced (ids, counts, totals measured not estimated), commit hashes, provenance for every generated artifact, and anything found but left undone, with reasons.
+- **Dispatch configuration**: where the platform lets you choose the worker's model or effort level, choose deliberately by task complexity and state the choice here. Turn count beats token price: the cheapest worker routinely takes two to three times the turns on multi-step work and costs more overall, so reserve the cheapest tier for mechanical, fully specified tasks.
 
 A brief template with fill-in sections is in `references/brief-template.md`.
+
+## The program ledger
+
+Every program keeps one ledger file, and its first line names the program or plan it belongs to; a ledger naming a different program is not yours to write in. The ledger records each task's completion with its commit range, every fix round and its outcome, and every ruling the integrator makes along the way.
+
+The ledger outranks memory. After any interruption or compaction, the integrator resumes from the ledger and the git state, not from recollection: items the ledger marks complete are not re-dispatched, and a task left mid-fix-loop resumes at the next round. A program run from memory alone eventually re-dispatches finished work and loses rulings nobody wrote down.
+
+## Pre-flight: the conflict scan
+
+Before the first wave is dispatched, scan the briefs against each other and write the scan down. One row for every pair of workers that share a file or an interface: what one produces, what the other consumes, and what the scan found. One row for every brief checked against itself: measured targets against scope, scope against stop conditions. Rule on every conflict the scan surfaces and record the ruling in the ledger before dispatch. A scan reported as "clean" with no rows behind it is not a scan that ran.
 
 ## Verification discipline: summaries are claims
 
@@ -59,6 +71,19 @@ Treat every worker report the way `verify-before-shipping` treats a green checkm
 - **A push is real only when the remote ref is read back** at the expected commit. An attempted push, a hook that usually passes, and a worker's word are all non-evidence.
 - **Deployment is verified at the destination**: the deployed commit matches, a health endpoint answers, and at least one artifact unique to this change is fetched live. "Merged" is not "live".
 - **A worker's false green is a known failure mode**, not a scandal. When you catch one, say what the log actually showed, fix forward, and tighten the reporting contract for the next wave. The worked antidotes are in `references/incident-playbook.md`.
+- **Review dispatches stay clean.** Never instruct a reviewer to ignore or downgrade a class of finding ("do not flag X", "at most Minor"). A suppressed finding is not a resolved one; findings are adjudicated when they come back, in the fix loop, where the adjudication gets written down.
+
+## The fix loop: capped rounds, written adjudication
+
+When review of a worker's branch produces findings, they are fixed in rounds on the worker's branch; workers still never merge, and the integrator re-verifies every round. The loop is capped at five rounds per task or branch:
+
+- **Rounds 1-3 resume the original worker.** It holds the context of its own choices; send it the open findings verbatim.
+- **Rounds 4-5 hand the branch to a fresh worker**, with the brief, the original worker's report, and the open findings. A loop that survives three resumes usually means the original worker cannot see its own problem; fresh eyes are the fix, not a sixth resume.
+- **Every round ends with a scoped re-review** that verdicts each finding addressed or not addressed, and examines only the fix diff for new breakage. New critical or important breakage in the fix diff joins the open findings; observations outside the diff go to the ledger, not the loop.
+- **Minor findings never enter the loop.** Record them in the ledger as they arrive and triage them at the final review; a roll-up nobody reads at the end is a silent discard with extra steps.
+- **At the cap, the integrator adjudicates in writing.** Each still-open finding is either parked with a ruling (why the code stands, or why it is real but deferred) or ruled on with the smallest load-bearing fix that unblocks dependent work. Adjudicating early to end a loop early is pre-judging by another name, and discarding a finding silently is forbidden at any round.
+
+Record each round in the ledger as it closes: findings addressed, findings still open, and the commit range it produced.
 
 ## Merge arithmetic: preserve both sides, let gates arbitrate
 

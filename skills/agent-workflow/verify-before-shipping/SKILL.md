@@ -11,6 +11,14 @@ Most "it works" claims that turn out wrong were never lies. They were intentions
 
 A claim is a test result, not an intention. Before you say something works, is fixed, passes, or shipped, you can point at the specific run that proves it: the command, its full output, and the line in that output that carries the claim. If you cannot point, you cannot claim. Say what you actually know instead ("the patch is written, the test run is still owed") and go run it.
 
+## Red-flag phrasing
+
+The claim does not have to use the words done, fixed, or passed to break the rule. Watch for:
+
+- **"Should", "probably", "seems"** attached to an outcome. Hedged success is still a success claim, and it carries no evidence.
+- **Satisfaction before the evidence lands.** "Great, that's fixed" said before the run is the claim arriving ahead of its proof.
+- **Paraphrases and implications.** "All wrapped up", "good to go", a status quietly moved to done: the rule binds anything that communicates success, not only the literal vocabulary.
+
 ## When this applies
 
 - Before marking a script, skill, config, or document done, fixed, verified, or shipped, including stamping a "Last verified" line.
@@ -44,10 +52,12 @@ Documentation is a set of claims about the code. Check the load-bearing ones mec
 
 ## Evidence discipline
 
+- **Evidence goes stale.** The run that proves a claim must come from this session and postdate the last change to the thing being claimed. A green run from before later edits, or from an earlier session, proves the state of something that no longer exists.
 - **Capture full output.** Pipe gate runs to a file and read the summary from the file. A pass claim cites the summary lines, not a vibe. Never judge a long run by its last screenful: a failure above the tail is still a failure.
 - **Exit codes are evidence; silence is not.** A command that printed nothing and exited 0 did a different thing from a command that verified something.
 - **A push is real when the remote says so.** After pushing, read the remote state back (the branch head, the file contents, the commit metadata that matters) and compare it against what you intended to ship. An attempted push, an accepted API call, or a local commit is not a shipped change.
 - **A fix is verified by the reproduction that failed before it.** Keep the failing case from the bug report, rerun it after the patch, and show both outcomes. New tests written after the fix prove the fix reads well; the old reproduction proves it works.
+- **A regression test is verified red-green.** Write the test, revert the fix, and watch the test fail against the bug; restore the fix and watch it pass. A regression test that has never been seen failing proves nothing about the bug it claims to guard.
 
 ## The verified stamp
 
