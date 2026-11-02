@@ -117,17 +117,60 @@ def resolve_marketplace(value: str) -> tuple[str, str, str | None]:
 # ("29,99 €", "1,299 JPY") layouts.
 _PRICE_CODES = (r"EUR|USD|GBP|CAD|AUD|JPY|SEK|PLN"
                 r"|AED|BRL|CNY|EGP|INR|MXN|SAR|SGD|TRY|ZAR")
+# An amount as storefronts print it: plain digits with an optional
+# decimal part ("59.99", "29,99"), or thousands grouped with a space,
+# no-break space, narrow no-break space, dot or comma ("1 299",
+# "1,299", "1.299"), again with an optional decimal part. The grouping
+# separators are load-bearing: a bare [\d.,]+ class silently drops
+# the leading group of "1 299 SEK" and reports 299 SEK.
+_PRICE_AMOUNT = (
+    r"(?:\d{1,3}(?:[ \u00a0\u202f.,]\d{3})+(?:[.,]\d{1,2})?"
+    r"|\d+(?:[.,]\d{1,2})?)")
 _PRICE_LINE = re.compile(
-    rf"(?:€|£|\$|¥|￥|₹|₺|R\$|{_PRICE_CODES})\s?[\d.,]+"
-    rf"|[\d.,]+\s?(?:€|£|\$|¥|￥|₹|₺|{_PRICE_CODES})")
+    rf"(?:€|£|\$|¥|￥|₹|₺|R\$|{_PRICE_CODES})\s?{_PRICE_AMOUNT}"
+    rf"|{_PRICE_AMOUNT}\s?(?:€|£|\$|¥|￥|₹|₺|{_PRICE_CODES})")
+
+# Money that appears in a card's text without being the product's
+# price: coupon and discount amounts, free-delivery spending
+# thresholds, financing instalments. A line carrying any of these
+# contexts is never the price line, however price-shaped its amount.
+_NON_PRICE_CONTEXT = re.compile(
+    r"coupon|discount|savings?|\bsave\b|delivery|shipping|"
+    r"per\s+month|/month|/mo\b|financing|instalments?|installments?",
+    re.IGNORECASE)
+
+# A line that IS defensibly the price: nothing on it but the amount
+# with its currency symbol or code, optionally behind a "Price:"
+# lead. Anything else on the line makes it prose, not a price.
+_PRICE_ONLY_LINE = re.compile(
+    rf"^(?:price\s*:?\s*)?({_PRICE_LINE.pattern})$", re.IGNORECASE)
+
+
+def _fallback_price(line: str) -> str | None:
+    """The price from one line of a card's visible text, or None.
+
+    The text fallback is the last resort for storefronts that render
+    no .a-price node, and it only trusts a line that is essentially
+    the price itself. Amounts from promotions, delivery thresholds
+    and financing text elsewhere in the card are not prices, and a
+    card with no defensible price line reports no price rather than
+    inventing one. Grouping separators inside the amount (the spaces
+    in "1 299 SEK") are removed, so no digit group is lost."""
+    line = line.strip()
+    if not line or _NON_PRICE_CONTEXT.search(line):
+        return None
+    match = _PRICE_ONLY_LINE.match(line)
+    if not match:
+        return None
+    return re.sub(r"(?<=\d)[ \u00a0\u202f](?=\d)", "", match.group(1))
 
 
 def _price_text(r) -> str | None:
     """Price as shown, across storefront layouts. The .a-offscreen span
     is the usual carrier, but some storefronts (amazon.de in testing)
     serve results without it, so fall back to composing the visible
-    .a-price parts, then to the first currency-shaped line of the
-    result's visible text."""
+    .a-price parts, then to a defensible price line in the result's
+    visible text (see _fallback_price)."""
     off = r.query_selector(".a-price .a-offscreen")
     if off:
         text = off.inner_text().strip()
@@ -156,9 +199,9 @@ def _price_text(r) -> str | None:
         if text:
             return text
     for line in r.inner_text().splitlines():
-        match = _PRICE_LINE.search(line.strip())
-        if match:
-            return match.group(0).strip()
+        text = _fallback_price(line)
+        if text:
+            return text
     return None
 
 

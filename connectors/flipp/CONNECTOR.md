@@ -36,7 +36,7 @@ python3 bin/flipp.py search "chicken breast" --postal "<postal code>" [--limit 2
 
 - The API caps search near 150 results and returns them in its own relevance order.
 
-- Text output shows the price with its unit, the merchant, the item name and the flyer validity window. JSON output uses one shared item contract across search, flyer and scan results: numeric and raw price values, the original price, composed price text, the parsed unit and a computed `unit_price_per_kg` when deterministic, sale story text, image URL and flyer id, plus a `coverage` block stating how many results came back and that the ranking is by relevance.
+- Text output shows the price with its unit, the merchant, the item name and the flyer validity window. JSON output uses one shared item contract across search, flyer and scan results: numeric and raw price values, the original price, composed price text, the parsed unit and a computed `unit_price_per_kg` when deterministic, sale story text, image URL and flyer id, plus a `coverage` block stating how many results came back (`returned`), how many matched the merchant filter when one is given (`matched`), how many are shown after the limit (`shown`), and that the ranking is by relevance.
 
 - Search is a relevance-ranked first page, not the whole catalogue, and some flyer items never appear in it. A search result is only ever the cheapest among returned results; for a comprehensive cheapest-price claim, use Scan flyers below and report its coverage.
 
@@ -84,7 +84,7 @@ python3 bin/flipp.py scan "chicken breast" --postal "<postal code>" [--merchant 
 
 ## Recover from errors
 
-- Failures print a JSON error object to stderr and exit nonzero; stdout stays clean. Exit 2 is `bad_args`: missing or invalid postal code, invalid locale, or an out-of-range limit. Fix the argument rather than retrying.
+- Failures print a JSON error object to stderr and exit nonzero; stdout stays clean. Exit 2 is `bad_args`: missing or invalid postal code, invalid locale, an out-of-range limit, or a command-line syntax error (unknown option, unknown subcommand, malformed value). Fix the argument rather than retrying.
 
 - Exit 1 codes: `network_error` (the helper already retried once; report the lookup as unavailable), `http_error` (upstream returned an error status), `rate_limited` (HTTP 429; wait before any further calls), `invalid_json` and `schema_error` (the upstream response shape changed; this is an integration failure, never a "no deals found" answer).
 

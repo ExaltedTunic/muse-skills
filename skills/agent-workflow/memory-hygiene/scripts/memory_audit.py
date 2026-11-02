@@ -9,12 +9,15 @@ of it. It judges nothing; it measures.
 Usage:
     memory_audit.py MEMORY.md [more-files...] [--dup-min-len 15]
 
-Exits 1 if any input file cannot be read (the readable files are still
-reported); 0 when every file was read.
+Exits 1 if any input file cannot be read or cannot be decoded as
+UTF-8 (the readable files are still reported; an undecodable file is
+reported as corrupt and excluded from duplicate analysis, never
+decoded lossily); 0 when every file was read.
 """
 import argparse
 import re
 import sys
+import unicodedata
 from collections import Counter
 
 STALE_MARKER = re.compile(r"todo|pending|next week", re.IGNORECASE)
@@ -22,11 +25,19 @@ STALE_CAP = 10
 
 
 def normalized(line):
-    # Unicode-aware: casefold, keep Unicode letters and digits (so
-    # "Møter" and "Måter" stay distinct), drop punctuation and the
+    # Canonical-equivalence-aware: NFC first, so a precomposed letter
+    # and its decomposed form (base letter + combining mark) compare
+    # equal. Then casefold, keep Unicode letters, digits, and
+    # combining marks (category Mn, which NFC can leave uncomposed
+    # for some scripts and letters), drop punctuation and the
     # underscore (a word character in regex, punctuation for prose),
-    # collapse whitespace.
-    kept = re.sub(r"[^\w\s]|_", "", line.casefold())
+    # collapse whitespace. "Møter" and "Måter" stay distinct.
+    line = unicodedata.normalize("NFC", line)
+    kept = "".join(
+        ch for ch in line.casefold()
+        if ch != "_" and (unicodedata.category(ch)[0] in "LN"
+                          or unicodedata.category(ch) == "Mn"
+                          or ch.isspace()))
     return " ".join(kept.split())
 
 
@@ -43,7 +54,13 @@ def main():
     global_examples = {}
     for path in args.files:
         try:
-            text = open(path, encoding="utf-8", errors="replace").read()
+            text = open(path, encoding="utf-8").read()
+        except UnicodeDecodeError as e:
+            print(f"{path}: cannot decode as UTF-8 ({e}); reported as "
+                  f"corrupt and excluded from duplicate analysis",
+                  file=sys.stderr)
+            failures += 1
+            continue
         except OSError as e:
             print(f"{path}: cannot read ({e})", file=sys.stderr)
             failures += 1

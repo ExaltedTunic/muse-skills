@@ -18,6 +18,7 @@ this suite; the "Last verified" lines in the playbooks record those.
 | `migration_models.py` | schema-migration-safety: executable models of the adoption, baseline, concurrency, constraint-guard, and nontransactional-DDL rules, each with the pre-fix behaviour as a failing control |
 | `smite_checks.py` | smite-2-builds: completed-item gate, role fallback, patch freshness, tier-cache versioning, aspect/relic vote denominators (network stubbed) |
 | `amazon_checks.py` | amazon-search: marketplace validation, page classification, price and unit-price parsing, smoke-test assertions (browser stubbed); price-history evidence-handoff wording |
+| `flipp_checks.py` | flipp connector: shared item contract, unit pricing, schema-drift detection (including non-object records), filter-before-limit search coverage, timeout retry/error envelope, and parse-level runs of every command example in CONNECTOR.md in both option orders (network stubbed) |
 
 Fixtures assemble credential-shaped strings at runtime instead of storing
 them literally, so this folder passes the repository's own scrub scan.

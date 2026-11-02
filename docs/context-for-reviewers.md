@@ -17,7 +17,7 @@ If you are about to review this repository, read this first. It will save you fr
 - **Connectors** are the plumbing: authenticated access to a service (mail, calendar, a retailer's API), usually a CLI or MCP server with its own documentation.
 - **Skills** are the playbooks: self-contained instruction packages that teach the agent when and how to orchestrate its tools, connectors, and bundled scripts to do a class of work reliably.
 
-This repository contains skills only. When a skill references a connector or a platform tool by name, that reference is a Muse-specific seam; good skills name the seam so the workflow can be adapted elsewhere (see the README's Portability section).
+This repository contains skills, plus a small connectors section (`connectors/`) holding read-only connector bundles documented to the same standard. When a skill references a connector or a platform tool by name, that reference is a Muse-specific seam; good skills name the seam so the workflow can be adapted elsewhere (see the README's Portability section).
 
 ## 3. Where skills live
 

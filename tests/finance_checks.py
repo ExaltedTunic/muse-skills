@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Regression checks for the financial-audit skill (fix wave W1).
+"""Regression checks for the financial-audit skill (fix waves W1-W2).
 
 Covers the behaviours verified in the earlier 45-check round (re-derived
-from SKILL.md's "Last verified" list and the script's own comments) plus
-the W1 fixes F01-F08. Stdlib only. Run:
+from SKILL.md's "Last verified" list and the script's own comments), the
+W1 fixes F01-F08 and the W2 fixes F1-F7 (second external review round:
+subscription stream separation, refund evidence, indicator precedence,
+description-column binding, Plaid currency, ingest/load validation and
+debt-name masking). Stdlib only. Run:
 
     python3 finance_checks.py
 
@@ -694,6 +697,251 @@ def f08_nonfinite_amounts_rejected():
     expect("NaN" not in body and "Infinity" not in body, body)
     for line in body.splitlines():
         json.loads(line)  # strict parse: raises on invalid JSON
+
+
+# ------------------------------------------------------- W2 fixes F1-F7
+
+@case
+def w2_f1_staggered_streams_sum_to_total():
+    # Two $10 subscriptions at one merchant billed on the 1st and 2nd of
+    # each month. Pooling the charge dates gives gaps 1,30,1,29,1, a
+    # 1-day median, a "weekly" cadence and $304.40/month. The charges
+    # must be separated into two monthly streams and summed: ~$20.
+    txns = []
+    for day in ("2026-08-01", "2026-08-02", "2026-09-01", "2026-09-02",
+                "2026-10-01", "2026-10-02"):
+        txns.append(T(day, "STREAMIO", -10.0))
+    s = fa.audit(txns, {}, as_of="2026-10-31")
+    expect(len(s["recurring"]) == 1, str(s["recurring"]))
+    r = s["recurring"][0]
+    expect(r["cadence"] == "monthly", str(r))
+    expect(19.5 <= r["monthly_cost"] <= 20.5, str(r))
+    expect(r["count"] == 6, str(r))
+
+
+@case
+def w2_f1_incoherent_stream_falls_back_irregular():
+    # One stream whose gaps are wildly inconsistent (32 then 119 days)
+    # must not be extrapolated from its median interval. The fallback
+    # is a window estimate: total charged over the calendar months
+    # covered, cadence "irregular".
+    txns = [T("2026-01-01", "STREAMIO", -30.0),
+            T("2026-02-02", "STREAMIO", -30.0),
+            T("2026-06-01", "STREAMIO", -30.0)]
+    s = fa.audit(txns, {}, as_of="2026-06-30")
+    expect(len(s["recurring"]) == 1, str(s["recurring"]))
+    r = s["recurring"][0]
+    expect(r["cadence"] == "irregular", str(r))
+    expect(r["monthly_cost"] == 30.0, str(r))   # 90 over Jan, Feb, Jun
+
+
+@case
+def w2_f2_etransfer_inflow_is_income():
+    # Merchant equality alone is not refund evidence: a $100 outflow
+    # cannot corroborate a $2,000 inflow at the same "merchant".
+    txns = [T("2026-01-05", "E-TRANSFER", -100.0),
+            T("2026-01-06", "E-TRANSFER", 2000.0)]
+    s = fa.audit(txns, {}, as_of="2026-01-31")
+    jan = s["monthly"]["2026-01"]
+    expect(jan["income"] == 2000.0, str(jan))
+    expect(jan["spending"] == 100.0, str(jan))
+
+
+@case
+def w2_f2_genuine_return_with_evidence_is_refund():
+    # No refund keyword, but a same-merchant earlier outflow of equal
+    # amount within 90 days corroborates the return.
+    txns = [T("2026-01-05", "STORE XYZ", -50.0),
+            T("2026-01-20", "STORE XYZ", 50.0)]
+    s = fa.audit(txns, {}, as_of="2026-01-31")
+    jan = s["monthly"]["2026-01"]
+    expect(jan["spending"] == 0.0, str(jan))
+    expect(jan["income"] == 0.0, str(jan))
+
+
+@case
+def w2_f2_inflow_above_prior_outflow_is_income():
+    # The corroborating outflow must be at least the inflow's amount.
+    txns = [T("2026-01-05", "STORE XYZ", -50.0),
+            T("2026-01-20", "STORE XYZ", 80.0)]
+    s = fa.audit(txns, {}, as_of="2026-01-31")
+    jan = s["monthly"]["2026-01"]
+    expect(jan["income"] == 80.0, str(jan))
+    expect(jan["spending"] == 50.0, str(jan))
+
+
+@case
+def w2_f2_stale_outflow_is_not_evidence():
+    # Corroboration expires: an outflow more than 90 days earlier does
+    # not make a later same-merchant inflow a refund.
+    txns = [T("2026-01-05", "STORE XYZ", -50.0),
+            T("2026-06-20", "STORE XYZ", 50.0)]
+    s = fa.audit(txns, {}, as_of="2026-06-30")
+    expect(s["monthly"]["2026-06"]["income"] == 50.0, str(s["monthly"]))
+
+
+@case
+def w2_f3_indicator_beats_type_column():
+    # An explicit Debit/Credit indicator column decides the sign even
+    # when a separate Transaction Type column exists; "CARD" in the
+    # type column must not leave a DR row positive.
+    text = ("Date,Description,Debit/Credit,Amount,Transaction Type\n"
+            "2026-01-05,GROCERY,DR,50.00,CARD\n"
+            "2026-01-06,PAYROLL,CR,1500.00,CARD\n")
+    with tempfile.TemporaryDirectory() as td:
+        out, _ = ingest_csv_quiet(write_tmp(td, "s.csv", text))
+    expect([t["amount"] for t in out] == [-50.0, 1500.0], str(out))
+
+
+@case
+def w2_f4_merchant_column_wins_over_transaction_type():
+    # "Transaction Type" is a kind column, not the description: the
+    # merchant must come from the Merchant column, not the POS value.
+    text = ("Date,Transaction Type,Merchant,Amount\n"
+            "2026-01-05,POS,LOBLAWS,-50\n")
+    with tempfile.TemporaryDirectory() as td:
+        out, _ = ingest_csv_quiet(write_tmp(td, "s.csv", text))
+    expect(len(out) == 1, str(out))
+    expect(out[0]["description"] == "LOBLAWS", str(out[0]))
+    expect(out[0]["merchant"] == "LOBLAWS", str(out[0]))
+    expect(out[0]["amount"] == -50.0, str(out[0]))
+
+
+@case
+def w2_f5_plaid_currency_preserved_and_split():
+    payload = {
+        "accounts": [
+            {"account_id": "cad1", "name": "CAD Chequing",
+             "iso_currency_code": "CAD"},
+            {"account_id": "usd1", "name": "USD Chequing",
+             "iso_currency_code": "USD"}],
+        "transactions": [
+            {"account_id": "cad1", "date": "2026-01-05", "name": "STORE A",
+             "amount": 100.0, "iso_currency_code": "CAD", "pending": False},
+            {"account_id": "usd1", "date": "2026-01-06", "name": "STORE B",
+             "amount": 100.0, "iso_currency_code": "USD", "pending": False},
+            # No transaction currency: falls back to the account's.
+            {"account_id": "usd1", "date": "2026-01-07", "name": "STORE C",
+             "amount": 50.0, "pending": False}],
+    }
+    with tempfile.TemporaryDirectory() as td:
+        path = write_tmp(td, "p.json", json.dumps(payload))
+        with redirect_stderr(io.StringIO()):
+            out = fa.ingest_plaid(path)
+    expect([t.get("currency") for t in out] == ["CAD", "USD", "USD"],
+           str(out))
+    s = fa.audit(out, {}, as_of="2026-01-31")
+    by_cur = s["monthly_by_currency"]
+    expect(by_cur["CAD"]["2026-01"]["spending"] == 100.0, str(by_cur))
+    expect(by_cur["USD"]["2026-01"]["spending"] == 150.0, str(by_cur))
+    # The headline monthly table is the configured currency only; the
+    # USD amounts must not be folded into it.
+    expect(s["monthly"]["2026-01"]["spending"] == 100.0, str(s["monthly"]))
+    report = fa.render_report(s, "CAD")
+    expect("Currencies CAD, USD" in report, report[:500])
+    expect("## Monthly cash flow (USD)" in report, report)
+    # Single-currency control: shape and rendering are unchanged.
+    single = [T("2026-01-05", "LOBLAWS", -100.0)]
+    s2 = fa.audit(single, {}, as_of="2026-01-31")
+    expect(s2["monthly_by_currency"] == {"CAD": s2["monthly"]},
+           str(s2["monthly_by_currency"]))
+    report2 = fa.render_report(s2, "CAD")
+    expect("Currency CAD." in report2, report2[:400])
+    expect("## Monthly cash flow\n" in report2, report2)
+
+
+@case
+def w2_f6_plaid_nonfinite_amounts_skipped():
+    payload = {
+        "accounts": [{"account_id": "a1", "name": "Chequing"}],
+        "transactions": [
+            {"account_id": "a1", "date": "2026-01-05", "name": "WEIRD ROW",
+             "amount": "NaN", "pending": False},
+            {"account_id": "a1", "date": "2026-01-06", "name": "INF ROW",
+             "amount": float("inf"), "pending": False},
+            {"account_id": "a1", "date": "2026-02-05", "name": "PAYROLL",
+             "amount": -500.0, "pending": False}],
+    }
+    with tempfile.TemporaryDirectory() as td:
+        path = write_tmp(td, "p.json", json.dumps(payload))
+        err = io.StringIO()
+        with redirect_stderr(err):
+            out = fa.ingest_plaid(path)
+        expect(len(out) == 1, str(out))
+        expect(out[0]["amount"] == 500.0, str(out[0]))
+        expect("2 invalid" in err.getvalue(), err.getvalue())
+        jsonl_path = os.path.join(td, "out.jsonl")
+        fa.write_jsonl(out, jsonl_path)
+        with open(jsonl_path, encoding="utf-8") as fh:
+            body = fh.read()
+    expect("NaN" not in body and "Infinity" not in body, body)
+    for line in body.splitlines():
+        json.loads(line)  # strict parse
+    # A non-finite record can never be serialized, even hand-built.
+    try:
+        fa.write_jsonl([{"date": "2026-01-05", "amount": float("nan")}],
+                       None)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("write_jsonl serialized a NaN amount")
+
+
+def _expect_systemexit(fn, needle):
+    try:
+        fn()
+    except SystemExit as exc:
+        expect(needle in str(exc), f"{needle!r} not in {exc!r}")
+        return
+    raise AssertionError(f"expected SystemExit mentioning {needle!r}")
+
+
+@case
+def w2_f6_jsonl_loader_validates_records():
+    good = json.dumps(T("2026-01-05", "LOBLAWS", -10.0))
+    bad_date = json.dumps({**T("2026-01-05", "BAD DATE", -10.0),
+                           "date": "not-a-date"})
+    missing = json.dumps({k: v for k, v in
+                          T("2026-01-05", "NO AMOUNT", -10.0).items()
+                          if k != "amount"})
+    nan_amount = ('{"date": "2026-01-05", "description": "NAN ROW", '
+                  '"merchant": "NAN ROW", "amount": NaN, "balance": null, '
+                  '"account": "Chequing"}')
+    with tempfile.TemporaryDirectory() as td:
+        ok_path = write_tmp(td, "ok.jsonl", good + "\n")
+        expect(len(fa.load_jsonl(ok_path)) == 1)
+        _expect_systemexit(
+            lambda: fa.load_jsonl(write_tmp(td, "d.jsonl", bad_date + "\n")),
+            "line 1")
+        _expect_systemexit(
+            lambda: fa.load_jsonl(write_tmp(td, "m.jsonl", missing + "\n")),
+            "line 1")
+        _expect_systemexit(
+            lambda: fa.load_jsonl(write_tmp(td, "n.jsonl",
+                                            good + "\n" + nan_amount + "\n")),
+            "line 2")
+        # The CLI fails the same way, with the line number on stderr.
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, "audit",
+             write_tmp(td, "m2.jsonl", missing + "\n")],
+            capture_output=True, text=True)
+        expect(proc.returncode != 0, proc.stdout)
+        expect("line 1" in proc.stderr, proc.stderr)
+
+
+@case
+def w2_f7_debt_name_masked_everywhere():
+    cfg = {"debts": [{"name": "Store Card 4111111111111111",
+                      "balance": 1000.0, "apr": 0.1999,
+                      "min_payment": 50}]}
+    txns = [T("2026-01-05", "LOBLAWS", -10.0)]
+    s = fa.audit(txns, cfg, as_of="2026-01-31")
+    name = s["debts"][0]["name"]
+    expect("4111111111111111" not in name, name)
+    expect("***11" in name, name)
+    report = fa.render_report(s, "CAD")
+    expect("4111111111111111" not in report, report)
+    expect("Store Card ***11" in report, report)
 
 
 # ------------------------------------------------------------------ runner

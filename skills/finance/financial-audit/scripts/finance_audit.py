@@ -9,7 +9,8 @@ Usage:
     finance_audit.py audit txns.jsonl [more.jsonl ...] --config config.json [--out report.md] [--json-out summary.json] [--as-of YYYY-MM-DD]
 
 Normalized transaction: {"date", "description", "merchant", "amount"
-(negative = money out, positive = money in), "balance", "account"}.
+(negative = money out, positive = money in), "balance", "account",
+and "currency" when the source states one (Plaid)}.
 """
 import argparse
 import csv
@@ -169,22 +170,30 @@ def ingest_csv(path, account, date_format=None, invert_amounts=False):
                          "Deposits or Amount columns)")
     headers = rows[header_idx]
     date_i = find_col(headers, "date")
-    desc_i = find_col(headers, "description", "transaction", "details",
-                      "name", "merchant", "memo",
-                      exclude=(date_i,) if date_i is not None else ())
     debit_i = find_col(headers, "debit", "withdrawal")
     credit_i = find_col(headers, "credit", "deposit")
     amount_i = find_col(headers, "amount")
     type_i = find_col(headers, "type")
     balance_i = find_col(headers, "balance")
+    indicator_i = None
     if debit_i is not None and debit_i == credit_i:
         # A single "Debit/Credit" column is an indicator, not a pair of
-        # money columns: both lookups bound the same index. Route it to
-        # the type role so the Amount branch below reads the amounts and
-        # takes their signs from the indicator ("DR"/"DEBIT" negative).
-        if type_i is None:
-            type_i = debit_i
+        # money columns: both lookups bound the same index. It gets its
+        # own role, separate from any Transaction Type column. An
+        # explicit indicator always determines an amount's sign; a
+        # Type column describes the kind of transaction and can never
+        # override it (a "CARD" type value left DR rows positive).
+        indicator_i = debit_i
         debit_i = credit_i = None
+    claimed = tuple(i for i in (date_i, debit_i, credit_i, amount_i,
+                                type_i, balance_i, indicator_i)
+                    if i is not None)
+    # Exact semantic headers win the description role, and a column
+    # already claimed by another role is never reused: a "Transaction
+    # Type" header is the kind column, not the merchant, so the broad
+    # "transaction" needle is only a last resort.
+    desc_i = find_col(headers, "description", "merchant", "name", "memo",
+                      "details", "payee", "transaction", exclude=claimed)
     if not date_format:
         date_format = detect_slash_format(
             _cell(r, date_i) for r in rows[header_idx + 1:])
@@ -208,10 +217,16 @@ def ingest_csv(path, account, date_format=None, invert_amounts=False):
             if amount is None:
                 skipped += 1
                 continue
-            if type_i is not None:
+            if indicator_i is not None:
+                kind = _cell(row, indicator_i).strip().upper()
+            elif type_i is not None:
                 kind = _cell(row, type_i).strip().upper()
-                if kind in ("DR", "DEBIT", "WITHDRAWAL"):
-                    amount = -abs(amount)
+            else:
+                kind = ""
+            if kind in ("DR", "DEBIT", "WITHDRAWAL"):
+                amount = -abs(amount)
+            elif kind in ("CR", "CREDIT", "DEPOSIT"):
+                amount = abs(amount)
         else:
             raise SystemExit("error: no Debit/Credit or Amount column found")
         if invert_amounts:
@@ -369,37 +384,100 @@ def ingest_plaid(path):
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
     body = data.get("body", data)
-    names = {}
+    names, currencies = {}, {}
     for acct in body.get("accounts", []):
         key = (acct.get("_plaid_source", {}).get("credential_id"),
                acct.get("account_id"))
         names[key] = acct.get("name") or acct.get("official_name") or "Account"
-    out, pending = [], 0
+        currencies[key] = acct.get("iso_currency_code")
+    out, pending, invalid = [], 0, 0
     for txn in body.get("transactions", []):
         if txn.get("pending"):
             pending += 1
             continue
         key = (txn.get("_plaid_source", {}).get("credential_id"),
                txn.get("account_id"))
+        try:
+            value = float(txn.get("amount"))
+        except (TypeError, ValueError):
+            value = None
+        if value is None or not math.isfinite(value):
+            # The same rule parse_amount applies to CSV: a non-finite
+            # or unparseable amount ("NaN", "inf", a missing field) is
+            # not an amount. Letting one through would write NaN into
+            # the JSONL, which is invalid JSON and a transaction that
+            # lands in neither income nor spending.
+            invalid += 1
+            continue
         description = txn.get("merchant_name") or txn.get("name") or ""
-        out.append({
+        record = {
             "date": txn.get("date"), "description": description,
             "merchant": merchant_key(description),
-            "amount": round(-float(txn.get("amount", 0)), 2),
+            "amount": round(-value, 2),
             "balance": None, "account": names.get(key, "Plaid account"),
-        })
-    print(f"ingested {len(out)} Plaid transactions, skipped {pending} pending",
-          file=sys.stderr)
+        }
+        currency = txn.get("iso_currency_code") or currencies.get(key)
+        if currency:
+            # Amounts are never converted between currencies; the
+            # record keeps its own so the audit can total each
+            # currency separately instead of folding a USD charge
+            # into a CAD month.
+            record["currency"] = currency
+        out.append(record)
+    print(f"ingested {len(out)} Plaid transactions, skipped {pending} "
+          f"pending, skipped {invalid} invalid", file=sys.stderr)
     return out
 
 
 def write_jsonl(txns, path):
-    text = "".join(json.dumps(t) + "\n" for t in txns)
+    # allow_nan=False: a non-finite value must fail here, at the
+    # write, instead of producing JSONL no strict parser can read.
+    text = "".join(json.dumps(t, allow_nan=False) + "\n" for t in txns)
     if path:
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(text)
     else:
         sys.stdout.write(text)
+
+
+def _record_problem(record):
+    """Why a normalized JSONL record cannot be audited, or None."""
+    if not isinstance(record, dict):
+        return "record is not a JSON object"
+    for key in ("date", "description", "merchant", "amount", "account"):
+        if key not in record:
+            return f"missing required field {key!r}"
+    amount = record["amount"]
+    if isinstance(amount, bool) or not isinstance(amount, (int, float)) \
+            or not math.isfinite(amount):
+        return f"amount is not a finite number: {amount!r}"
+    try:
+        date.fromisoformat(str(record["date"]))
+    except ValueError:
+        return f"date is not an ISO date: {record['date']!r}"
+    return None
+
+
+def load_jsonl(path):
+    """Load normalized transactions, validating every record. A bad
+    record fails the whole load with its line number: accepting it
+    silently would surface later as a bare KeyError deep in the audit
+    or, worse, as a month bucket keyed by a garbage date string."""
+    out = []
+    with open(path, encoding="utf-8") as fh:
+        for lineno, line in enumerate(fh, 1):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise SystemExit(f"error: {path} line {lineno}: "
+                                 f"invalid JSON ({exc})")
+            problem = _record_problem(record)
+            if problem:
+                raise SystemExit(f"error: {path} line {lineno}: {problem}")
+            out.append(record)
+    return out
 
 
 def cadence_label(days):
@@ -429,6 +507,59 @@ def mask_text(text):
         return text
     text = _GROUPED_DIGITS.sub(lambda m: "***" + m.group(0)[-2:], str(text))
     return _LONG_DIGITS.sub(lambda m: "***" + m.group(0)[-2:], text)
+
+
+def _day_of_month_distance(a, b):
+    """Circular distance between two days of the month (1-31): the
+    31st and the 1st are one day apart, not thirty."""
+    gap = abs(a - b)
+    return min(gap, 31 - gap)
+
+
+def _split_streams(day_entries):
+    """Separate one merchant's (date, day-total) entries into billing
+    streams by day of month. Two subscriptions at one merchant billed
+    a day apart (the 1st and the 2nd) pool into charge dates whose
+    gaps alternate 1,30,1,29,1; no single cadence describes them and
+    the pooled median interval collapses to 1 day. A charge joins the
+    stream whose anchor day is within three days of its own
+    (circularly) once that stream's previous charge is at least 15
+    days old; otherwise it starts a new stream."""
+    streams = []
+    for day, total in day_entries:
+        best = None
+        for stream in streams:
+            distance = _day_of_month_distance(day.day, stream["anchor"])
+            if distance > 3:
+                continue
+            if (day - stream["entries"][-1][0]).days < 15:
+                continue
+            rank = (distance, stream["entries"][-1][0])
+            if best is None or rank < best[0]:
+                best = (rank, stream)
+        if best is None:
+            streams.append({"anchor": day.day, "entries": [(day, total)]})
+        else:
+            best[1]["entries"].append((day, total))
+    return [s["entries"] for s in streams]
+
+
+def _stream_estimate(entries):
+    """(cadence, monthly cost, average day total) for one billing
+    stream, or None when the stream cannot support a cadence
+    estimate: fewer than two charges, or gaps so inconsistent (the
+    longest more than twice the shortest) that extrapolating an
+    interval would invent a rhythm the charges do not have."""
+    if len(entries) < 2:
+        return None
+    gaps = [(b[0] - a[0]).days for a, b in zip(entries, entries[1:])]
+    if max(gaps) > 2 * min(gaps):
+        return None
+    interval = statistics.median(gaps)
+    if not interval:
+        return None
+    average = statistics.mean(total for _, total in entries)
+    return cadence_label(interval), average * 30.44 / interval, average
 
 
 def audit(txns, config, as_of=None):
@@ -484,29 +615,57 @@ def audit(txns, config, as_of=None):
                 return name
         return "other"
 
-    monthly = defaultdict(lambda: {"income": 0.0, "spending": 0.0,
-                                    "transfers": 0.0})
+    # Monthly totals are kept per currency: amounts are never
+    # converted, so folding a USD charge into a CAD month would state
+    # a total in no real currency. Records without a currency (CSV
+    # and text ingest) belong to the configured base currency.
+    base_currency = str(config.get("currency", "CAD")).upper()
+
+    def currency_of(t):
+        return str(t.get("currency") or base_currency).upper()
+
+    monthly_cur = defaultdict(
+        lambda: defaultdict(lambda: {"income": 0.0, "spending": 0.0,
+                                     "transfers": 0.0}))
     fees, cat_month = [], defaultdict(float)
     outflows = []
     refund_re = re.compile(r"REFUND|RETURN|REVERSAL", re.I)
-    outflow_merchants = {t["merchant"] for t in txns
-                         if t["amount"] < 0 and not is_transfer(t)}
+    outflows_by_merchant = defaultdict(list)
+    for t in txns:
+        if t["amount"] < 0 and not is_transfer(t):
+            outflows_by_merchant[t["merchant"]].append(t)
+
+    def is_refund(t):
+        if refund_re.search(t["description"]):
+            return True
+        # Merchant equality alone is not evidence: an inflow under a
+        # name that also has outflows (a generic E-TRANSFER above all)
+        # is income unless a specific earlier outflow corroborates a
+        # return: same merchant, at least the inflow's amount, within
+        # 90 days before it.
+        day = date.fromisoformat(t["date"])
+        for o in outflows_by_merchant.get(t["merchant"], []):
+            if -o["amount"] >= t["amount"] \
+                    and 0 <= (day - date.fromisoformat(o["date"])).days <= 90:
+                return True
+        return False
+
     for t in txns:
         month = t["date"][:7]
+        bucket = monthly_cur[currency_of(t)]
         if is_transfer(t):
-            monthly[month]["transfers"] += abs(t["amount"])
+            bucket[month]["transfers"] += abs(t["amount"])
             continue
         if t["amount"] > 0:
-            if refund_re.search(t["description"]) \
-                    or t["merchant"] in outflow_merchants:
+            if is_refund(t):
                 # A purchase refund or return is not income: it offsets
                 # spending, in total and in its category-month bucket.
-                monthly[month]["spending"] -= t["amount"]
+                bucket[month]["spending"] -= t["amount"]
                 cat_month[(category_of(t), month)] -= t["amount"]
             else:
-                monthly[month]["income"] += t["amount"]
+                bucket[month]["income"] += t["amount"]
         elif t["amount"] < 0:
-            monthly[month]["spending"] += -t["amount"]
+            bucket[month]["spending"] += -t["amount"]
             outflows.append(t)
             cat_month[(category_of(t), month)] += -t["amount"]
             if FEE_RE.search(t["description"]):
@@ -526,29 +685,59 @@ def audit(txns, config, as_of=None):
         span = (days[-1] - days[0]).days
         if span < 40:
             continue
-        gaps = [(b - a).days for a, b in zip(days, days[1:])]
-        interval = statistics.median(gaps) if gaps else 0
-        if not interval:
-            continue
         amounts = [-i["amount"] for i in items]
-        # Magnitudes are totalled per charge date before averaging:
-        # two accounts paying the same merchant on the same day are
-        # two charges, and averaging per charge while the interval is
-        # computed from deduplicated dates would halve the estimated
-        # cost of parallel subscriptions. The stability and creep
-        # checks below keep using the per-charge series, which is what
-        # "this charge's amount changed" means.
+        # Magnitudes are totalled per charge date before any cadence
+        # math: two accounts paying the same merchant on the same day
+        # are two charges, and averaging per charge while intervals
+        # come from deduplicated dates would halve the estimated cost
+        # of parallel subscriptions. The stability and creep checks
+        # below keep using the per-charge series, which is what "this
+        # charge's amount changed" means.
         per_day = defaultdict(float)
         for i in items:
             per_day[i["date"]] += -i["amount"]
-        day_amounts = [per_day[d] for d in sorted(per_day)]
-        avg = statistics.mean(day_amounts)
+        day_entries = [(d, per_day[d.isoformat()]) for d in days]
+        day_amounts = [total for _, total in day_entries]
+
+        # Cadence is estimated per billing stream when the merchant
+        # bills on a monthly-style rhythm (its charges land on at most
+        # three distinct days of the month): streams are estimated
+        # separately and summed, so two subscriptions billed a day
+        # apart cost as two monthly streams. Merchants on a
+        # weekly-style rhythm, whose charge days spread across the
+        # month, keep the pooled estimate.
+        cadence = avg = monthly_cost = None
+        if len({d.day for d in days}) <= 3:
+            estimates = [_stream_estimate(entries)
+                         for entries in _split_streams(day_entries)]
+            if all(e is not None for e in estimates):
+                labels = {e[0] for e in estimates}
+                cadence = labels.pop() if len(labels) == 1 else "irregular"
+                avg = sum(e[2] for e in estimates)
+                monthly_cost = sum(e[1] for e in estimates)
+            else:
+                # No coherent set of streams: report the window
+                # average (total over the calendar months covered)
+                # and label the cadence irregular instead of
+                # extrapolating an incoherent interval.
+                months = {(d.year, d.month) for d in days}
+                cadence = "irregular"
+                avg = statistics.mean(day_amounts)
+                monthly_cost = sum(day_amounts) / len(months)
+        if cadence is None:
+            gaps = [(b - a).days for a, b in zip(days, days[1:])]
+            interval = statistics.median(gaps) if gaps else 0
+            if not interval:
+                continue
+            cadence = cadence_label(interval)
+            avg = statistics.mean(day_amounts)
+            monthly_cost = avg * 30.44 / interval
         entry = {"merchant": merchant, "count": len(items),
-                 "cadence": cadence_label(interval),
+                 "cadence": cadence,
                  "average": round(avg, 2),
                  "last": round(day_amounts[-1], 2),
                  "last_date": items[-1]["date"],
-                 "monthly_cost": round(avg * 30.44 / interval, 2)}
+                 "monthly_cost": round(monthly_cost, 2)}
         stable = min(amounts) > 0 and max(amounts) / min(amounts) <= 1.2
         if stable:
             recurring.append(entry)
@@ -625,6 +814,19 @@ def audit(txns, config, as_of=None):
                                     "spent": total, "budget": budget,
                                     "over": round(total - budget, 2)})
 
+    def _monthly_out(by_month):
+        return {m: {k: round(v, 2) for k, v in vals.items()}
+                for m, vals in sorted(by_month.items())}
+
+    monthly_by_currency = {cur: _monthly_out(by_month)
+                           for cur, by_month in sorted(monthly_cur.items())}
+    if base_currency in monthly_by_currency:
+        monthly = monthly_by_currency[base_currency]
+    elif len(monthly_by_currency) == 1:
+        monthly = next(iter(monthly_by_currency.values()))
+    else:
+        monthly = {}
+
     # Output-layer masking: everything below that carries statement text
     # gets its identifier-shaped digits masked before it can reach a
     # report or the JSON summary.
@@ -635,6 +837,9 @@ def audit(txns, config, as_of=None):
     duplicates = [{**d, "merchant": mask_text(d["merchant"])}
                   for d in duplicates]
     large = [{**x, "description": mask_text(x["description"])} for x in large]
+    # Configured debt names are user-provided identity labels rendered
+    # into both outputs; they get the same masking as statement text.
+    debts = [{**d, "name": mask_text(d["name"])} for d in debts]
 
     return {
         "as_of": eval_date.isoformat(),
@@ -643,8 +848,9 @@ def audit(txns, config, as_of=None):
                             if t.get("account")}),
         "period": [txns[0]["date"], txns[-1]["date"]] if txns else [],
         "transaction_count": len(txns),
-        "monthly": {m: {k: round(v, 2) for k, v in vals.items()}
-                    for m, vals in sorted(monthly.items())},
+        "monthly": monthly,
+        "monthly_by_currency": monthly_by_currency,
+        "currencies": sorted(monthly_by_currency),
         "fees_total": round(sum(-t["amount"] for t in fees), 2),
         "fees": [{"date": t["date"], "description": mask_text(t["description"]),
                   "amount": t["amount"]} for t in fees],
@@ -702,22 +908,36 @@ def render_report(s, currency):
         lines += _debt_lines(s)
         lines.append("")
         return "\n".join(lines)
+    by_currency = s.get("monthly_by_currency") or {}
+    if len(by_currency) > 1:
+        currency_note = ("Currencies " + ", ".join(sorted(by_currency))
+                         + " (each totalled separately, never converted)")
+    else:
+        currency_note = f"Currency {currency}"
     lines = [f"# Financial audit, {s['period'][0]} to {s['period'][1]}",
              "",
-             f"Currency {currency}. Covers {s['transaction_count']} "
+             f"{currency_note}. Covers {s['transaction_count']} "
              f"transactions from {', '.join(s['accounts']) or 'statements'}. "
              f"Statement figures are as of {s['statement_as_of']}. "
              f"Deadlines evaluated as of {s['as_of']}. Own-account "
              "transfers and card payments are excluded from income and "
-             "spending.", "",
-             "## Monthly cash flow", "",
-             "| Month | Income | Spending | Net | Moved between own accounts |",
-             "|---|---|---|---|---|"]
-    for month, v in s["monthly"].items():
-        net = v["income"] - v["spending"]
-        lines.append(f"| {month} | {money(v['income'])} | "
-                     f"{money_signed(v['spending'])} | {money_signed(net)} | "
-                     f"{money(v['transfers'])} |")
+             "spending."]
+    if len(by_currency) > 1:
+        sections = [(f"## Monthly cash flow ({cur})", months)
+                    for cur, months in by_currency.items()]
+    else:
+        sections = [("## Monthly cash flow", s["monthly"])]
+    for heading, months in sections:
+        lines += ["", heading, "",
+                  "| Month | Income | Spending | Net | "
+                  "Moved between own accounts |",
+                  "|---|---|---|---|---|"]
+        for month, v in months.items():
+            net = v["income"] - v["spending"]
+            lines.append(f"| {month} | {money(v['income'])} | "
+                         f"{money_signed(v['spending'])} | "
+                         f"{money_signed(net)} | "
+                         f"{money(v['transfers'])} |")
     lines += ["", "## Recurring bills and subscriptions", "",
               "| Merchant | Cadence | Average | Last | Monthly cost |",
               "|---|---|---|---|---|"]
@@ -833,8 +1053,7 @@ def main():
                 config = json.load(fh)
         txns = []
         for path in args.files:
-            with open(path, encoding="utf-8") as fh:
-                txns += [json.loads(line) for line in fh if line.strip()]
+            txns += load_jsonl(path)
         summary = audit(txns, config, as_of=args.as_of)
         report = render_report(summary, config.get("currency", "CAD"))
         if args.json_out:

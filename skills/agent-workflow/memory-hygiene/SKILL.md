@@ -18,7 +18,7 @@ This skill assumes the common shape: one curated long-term file (call it MEMORY.
 
 ## Measure first
 
-Run the bundled `scripts/memory_audit.py` over the curated file and the recent logs. You want the starting facts: line and word counts, the section inventory, and any normalized duplicate lines (case/punctuation-insensitive), within and across the files audited. Report them before you touch anything; they are also how you prove the pass did something.
+Run the bundled `scripts/memory_audit.py` over the curated file and the recent logs. You want the starting facts: line and word counts, the section inventory, and any normalized duplicate lines (case/punctuation-insensitive), within and across the files audited. Normalization is canonical-equivalence aware (NFC applied first, combining marks preserved), so the same line written in precomposed and decomposed forms counts as one line, while genuinely different spellings stay distinct. A file that is not valid UTF-8 is reported as corrupt and excluded from duplicate analysis, never decoded lossily into look-alike text; the audit exits non-zero when any input is unreadable or corrupt. Report the measurements before you touch anything; they are also how you prove the pass did something.
 
 ## The pass, in order
 

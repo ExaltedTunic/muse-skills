@@ -395,6 +395,120 @@ def _():
     return "full mode carries empty counts"
 
 
+# ---------------------------------------------------------------- R5
+
+@check("R5 gate: only 'Tier 3' is completed; every other tier unverified")
+def _():
+    for bad in ("Unknown", "", "Tier 0", "Banana", 2):
+        mod.item_tier = lambda s, t=bad: t
+        builds = [make_build(CORE6) for _ in range(10)]
+        res = mod.aggregate(builds, "jungle")
+        expect(res.get("complete") is False,
+               f"tier {bad!r}: complete={res.get('complete')}")
+        expect(res.get("missing") == 6,
+               f"tier {bad!r}: missing={res.get('missing')}")
+        expect(len(res["core"]) == 0, f"tier {bad!r}: core not empty")
+        expect(len(res.get("unverified", [])) == 6,
+               f"tier {bad!r}: unverified={len(res.get('unverified', []))}")
+    return "Unknown/''/'Tier 0'/'Banana'/2 -> 0 core, 6 unverified, incomplete"
+
+
+@check("R5 tier cache loader admits only the known tier vocabulary")
+def _():
+    fd, path = tempfile.mkstemp(suffix=".json")
+    os.close(fd)
+    old_path = mod._TIER_CACHE_PATH
+    mod._TIER_CACHE_PATH = path
+    try:
+        mod.set_current_patch("Open Beta 46")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"patch": "Open Beta 46",
+                       "tiers": {"good-3": "Tier 3", "good-2": "Tier 2",
+                                 "bad-unknown": "Unknown", "bad-empty": "",
+                                 "bad-banana": "Banana", "bad-num": 2,
+                                 "bad-none": None}}, fh)
+        loaded = mod._load_tier_cache()
+        expect(loaded == {"good-3": "Tier 3", "good-2": "Tier 2"},
+               f"loaded={loaded!r}")
+    finally:
+        mod._TIER_CACHE_PATH = old_path
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    return "cache keeps Tier 2/Tier 3, drops unknown strings and non-strings"
+
+
+@check("R5 item_tier validates the fetched tier before returning it")
+def _():
+    fd, path = tempfile.mkstemp(suffix=".json")
+    os.close(fd)
+    old_path = mod._TIER_CACHE_PATH
+    mod._TIER_CACHE_PATH = path
+    mod.item_tier = REAL_ITEM_TIER
+    try:
+        mod.set_current_patch("Open Beta 46")
+        for raw_tier, expected in ((2, None), ("Unknown", None),
+                                   ("Tier 3", "Tier 3")):
+            payload = {"nodes": [{"type": "data", "data":
+                                  [{"item": 1}, {"tier": 2}, raw_tier]}]}
+            mod.fetch = lambda url, p=payload: json.dumps(p)
+            mod._TIER_CACHE = {}
+            mod._TIER_CACHE_PATCH = object()
+            got = mod.item_tier("some-slug")
+            expect(got == expected,
+                   f"fetched tier {raw_tier!r}: got {got!r}, want {expected!r}")
+    finally:
+        mod._TIER_CACHE_PATH = old_path
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    return "numeric/unknown fetched tiers -> None; 'Tier 3' passes through"
+
+
+# ---------------------------------------------------------------- R6
+
+ORDER_SOLO = "[1,2,3,1,2,3,1,2,4,1,2,3,1,2,3,4,1,2,3,4]"
+ORDER_JUNGLE = "[2,1,3,2,1,3,2,1,4,2,1,3,2,1,3,4,2,1,3,4]"
+
+SS_ORDER_FIRST = (
+    '{"title":"Thor Solo Build","abilityLevelOrder":' + ORDER_SOLO + ','
+    '"roles":["Solo"],"matchScore":80},'
+    '{"title":"Thor Jungle Build","abilityLevelOrder":' + ORDER_JUNGLE + ','
+    '"roles":["Jungle"],"matchScore":90}')
+
+SS_ROLES_FIRST = (
+    '{"title":"Thor Solo Build","roles":["Solo"],"matchScore":80,'
+    '"abilityLevelOrder":' + ORDER_SOLO + '},'
+    '{"title":"Thor Jungle Build","roles":["Jungle"],"matchScore":90,'
+    '"abilityLevelOrder":' + ORDER_JUNGLE + '}')
+
+
+@check("R6 fetch_skills pairs fields within one build, any field order")
+def _():
+    mod.fetch_skills = REAL_FETCH_SKILLS
+    for label, html in (("order-first", SS_ORDER_FIRST),
+                        ("roles-first", SS_ROLES_FIRST)):
+        mod.fetch = ss_fetch(html)
+        res = mod.fetch_skills("Thor", "jungle")
+        expect(res and res.get("start") == [2, 1, 3, 2],
+               f"{label}: jungle start={res and res.get('start')}")
+        expect(res.get("source_roles") == ["Jungle"],
+               f"{label}: jungle roles={res.get('source_roles')}")
+        expect(res.get("source_title") == "Thor Jungle Build",
+               f"{label}: jungle title={res.get('source_title')}")
+        mod.fetch = ss_fetch(html)
+        res = mod.fetch_skills("Thor", "solo")
+        expect(res and res.get("start") == [1, 2, 3, 1],
+               f"{label}: solo start={res and res.get('start')}")
+        expect(res.get("source_roles") == ["Solo"],
+               f"{label}: solo roles={res.get('source_roles')}")
+        expect(res.get("source_title") == "Thor Solo Build",
+               f"{label}: solo title={res.get('source_title')}")
+    return "both field orders return each role's own build"
+
+
 # ------------------------------------------------------- preserved behaviour
 
 @check("PRESERVE aspect filter: match builds, zero-match exits 1")

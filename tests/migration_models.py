@@ -7,7 +7,13 @@ text of references/runner-and-proof-templates.md before and after the fix.
 Findings covered: M01 (adoption over-seeding), M02 (fresh-only baseline
 eligibility), M03 (concurrent runners + stale applied set), M04 (CHECK guard
 scoping, modelled as the pattern's decision logic over a mock catalog), CTX04
-(nontransactional-DDL boundary and protocol).
+(nontransactional-DDL boundary and protocol). Fix2 wave 5 adds: D1 (guard
+normalization must be quote-aware: case and whitespace fold only outside
+quoted literals and identifiers), D2 (the guard must compare the constraint
+expression independently of validation state: pg_get_constraintdef appends
+" NOT VALID" to an unvalidated constraint's definition, and convalidated
+drives the validate branch), PG-B (the M03 re-read scenario relabelled for
+what it actually proves: sequential-rerun idempotency, not lock bypass).
 
 sqlite stands in for the target engine; PostgreSQL-only surface syntax
 (pg_advisory_lock, pg_constraint, CREATE INDEX CONCURRENTLY) is modelled by
@@ -363,15 +369,23 @@ print(f"  new: A applied={repA['appliedNow']} B after release={repB2} rows={rows
 check("M03 new: body ran exactly once across both runners", rows == 1)
 A.close(); B.close(); os.unlink(path)
 
-# Defense in depth: lock bypassed, in-transaction re-read still prevents it.
+# Sequential rerun, NOT a lock-bypass proof: A runs to a committed finish
+# first; only then does B run, and B's in-transaction re-read sees A's
+# committed ledger row and skips. The two calls never interleave, so this
+# proves idempotency across retries and restarts (a rerun after a committed
+# competing run skips cleanly) -- it does not prove concurrency protection
+# when the lock is absent or bypassed. Two unlocked runners whose
+# transactions interleave can both re-read an empty ledger and both proceed;
+# the advisory lock is the only mutual-exclusion mechanism.
 path, A, B = filedb()
 bootstrap(A); A.execute("CREATE TABLE app_data (v text)")
 appliedA = set(ledger_names(A)); appliedB = set(ledger_names(B))  # both stale-empty
 rA = new_apply_one(A, seed_mig(), base_exists)
 rB = new_apply_one(B, seed_mig(), base_exists)
 rows = A.execute("SELECT COUNT(*) FROM app_data").fetchone()[0]
-print(f"  new, lock bypassed: A={rA} B={rB} rows={rows}")
-check("M03 new: re-read inside the transaction catches the stale snapshot",
+print(f"  new, sequential rerun (A committed before B ran): A={rA} B={rB} rows={rows}")
+check("M03 new: sequential rerun skips via the in-transaction re-read "
+      "(idempotency across restarts, not concurrency protection)",
       rA == "applied" and rB == "skipped" and rows == 1)
 A.close(); B.close(); os.unlink(path)
 
@@ -380,7 +394,54 @@ print("== M04: CHECK guard scoped by relation + definition, three states ==")
 # Decision-logic model of the pattern over a mock pg_constraint catalog.
 NAME = "orders_status_closed_set"
 INTENDED = "check ((status = any (array['placed','paid','shipped','refunded','cancelled'])))"
-def norm(s): return " ".join(s.lower().split())
+def norm(s): return " ".join(s.lower().split())  # pre-fix normalizer, kept for the legacy controls
+
+def normalize_constraint_def(s):
+    """Quote-aware normalization, the identical algorithm to the template's
+    PL/pgSQL helper normalize_constraint_def: strip one trailing NOT VALID
+    suffix (validation state, which convalidated carries separately), then
+    fold case and collapse whitespace ONLY outside single-quoted string
+    literals and double-quoted identifiers. Literal and identifier contents
+    pass through byte-for-byte, '' and "" escapes included."""
+    t = s.rstrip()
+    if t.endswith(" NOT VALID"):
+        t = t[: -len(" NOT VALID")]
+    out = []
+    in_single = in_double = False
+    pending_space = False
+    i = 0
+    while i < len(t):
+        c = t[i]
+        if in_single:
+            out.append(c)
+            if c == "'":
+                if i + 1 < len(t) and t[i + 1] == "'":
+                    out.append("'")
+                    i += 2
+                    continue
+                in_single = False
+        elif in_double:
+            out.append(c)
+            if c == '"':
+                if i + 1 < len(t) and t[i + 1] == '"':
+                    out.append('"')
+                    i += 2
+                    continue
+                in_double = False
+        elif c.isspace():
+            if out:
+                pending_space = True
+        else:
+            if pending_space:
+                out.append(" ")
+                pending_space = False
+            out.append(c.lower())
+            if c == "'":
+                in_single = True
+            elif c == '"':
+                in_double = True
+        i += 1
+    return "".join(out)
 
 def old_guard(catalog):
     return "skipped" if any(r["conname"] == NAME for r in catalog) else "added"
@@ -392,7 +453,7 @@ def new_guard(catalog, action_log):
                         "def": INTENDED, "convalidated": True})
         return "added"
     r = rows[0]
-    if norm(r["def"]) != norm(INTENDED):
+    if normalize_constraint_def(r["def"]) != normalize_constraint_def(INTENDED):
         raise NamedAbort(f"constraint {NAME} on orders exists with a different definition: {r['def']}")
     if not r["convalidated"]:
         r["convalidated"] = True
@@ -424,6 +485,101 @@ check("M04 new: NOT VALID state runs VALIDATE as the separate step",
 cat = [{"conname": NAME, "conrelid": "orders", "def": INTENDED, "convalidated": True}]
 check("M04 new: present, identical, validated is a true no-op",
       new_guard(cat, []) == "no-op")
+
+# =====================================================================
+print("== D1/D2: quote-aware normalization; expression vs validation state ==")
+# The pre-fix scoped guard (the M04-era new_guard logic, preserved as the
+# control): right table, right three states, but the comparison lowercases
+# and whitespace-collapses the WHOLE deparsed definition -- the template's
+# regexp_replace(lower(pg_get_constraintdef(...))) form -- and never strips
+# the NOT VALID suffix pg_get_constraintdef appends, so the expression
+# comparison is corrupted by literal contents (D1) and by validation state
+# (D2). The fixed guard further below must use normalize_constraint_def,
+# which mirrors the template's PL/pgSQL helper of the same name.
+def legacy_def_guard(catalog):
+    rows = [r for r in catalog if r["conname"] == NAME and r["conrelid"] == "orders"]
+    if not rows:
+        catalog.append({"conname": NAME, "conrelid": "orders",
+                        "def": INTENDED, "convalidated": True})
+        return "added"
+    r = rows[0]
+    if norm(r["def"]) != norm(INTENDED):
+        raise NamedAbort(f"constraint {NAME} on orders exists with a different definition: {r['def']}")
+    if not r["convalidated"]:
+        r["convalidated"] = True
+        return "validated"
+    return "no-op"
+
+def outcome(guard, catalog):
+    try:
+        return guard(catalog, []) if guard is new_guard else guard(catalog)
+    except NamedAbort as e:
+        return f"raised: {e}"
+
+def row(definition, validated=True):
+    return [{"conname": NAME, "conrelid": "orders",
+             "def": definition, "convalidated": validated}]
+
+# --- D1: literal contents are part of the definition
+PAID_UPPER = INTENDED.replace("'paid'", "'PAID'")
+o = outcome(legacy_def_guard, row(PAID_UPPER))
+n = outcome(new_guard, row(PAID_UPPER))
+print(f"  'PAID' for 'paid' inside the literal: legacy={o} new={n}")
+check("D1 legacy control: whole-string lowercase accepts 'PAID' as identical",
+      o == "no-op")
+check("D1 new: case change inside a string literal is a different definition",
+      n.startswith("raised:") and "different definition" in n)
+
+NOTE_INTENDED = "check ((note = 'pa id'))"
+NOTE_WIDE = "check ((note = 'pa  id'))"
+_orig_intended = INTENDED
+INTENDED = NOTE_INTENDED  # the guard logic is definition-generic
+o = outcome(legacy_def_guard, row(NOTE_WIDE))
+n = outcome(new_guard, row(NOTE_WIDE))
+print(f"  'pa  id' vs 'pa id' inside the literal: legacy={o} new={n}")
+check("D1 legacy control: whitespace inside a literal is collapsed away",
+      o == "no-op")
+check("D1 new: whitespace inside a string literal is preserved, so it differs",
+      n.startswith("raised:") and "different definition" in n)
+INTENDED = _orig_intended
+
+# Case and whitespace OUTSIDE literals are cosmetic in deparsed output and
+# must still compare equal: this is the guard's original purpose, kept.
+SHOUTY = "CHECK  ((STATUS = ANY  (ARRAY['placed','paid','shipped','refunded','cancelled'])))"
+n = outcome(new_guard, row(SHOUTY))
+print(f"  case/whitespace differences outside literals only: new={n}")
+check("D1 new: case/whitespace differences outside literals still compare equal",
+      n == "no-op")
+
+# '' escapes: the literal's bytes, escapes included, are preserved exactly.
+ESC_INTENDED = "check ((note = 'it''s ok'))"
+ESC_WIDE = "check ((note = 'it''s  ok'))"
+ESC_CASED = "check ((note = 'it''s OK'))"
+INTENDED = ESC_INTENDED
+same = outcome(new_guard, row(ESC_INTENDED))
+wide = outcome(new_guard, row(ESC_WIDE))
+cased = outcome(new_guard, row(ESC_CASED))
+print(f"  escaped literal: identical={same} wide={wide} cased={cased}")
+check("D1 new: ''-escaped literal preserved byte-for-byte (identical passes; "
+      "inner whitespace or case change raises)",
+      same == "no-op" and wide.startswith("raised:") and cased.startswith("raised:"))
+INTENDED = _orig_intended
+
+# --- D2: NOT VALID is validation state, not part of the expression
+cat = row(INTENDED + " NOT VALID", validated=False)
+o = outcome(legacy_def_guard, [dict(r) for r in cat])
+n = outcome(new_guard, cat)
+print(f"  intended def + ' NOT VALID', convalidated=False: legacy={o} new={n}")
+check("D2 legacy control: suffix makes the identical constraint 'different', "
+      "validate branch unreachable", o.startswith("raised:"))
+check("D2 new: trailing NOT VALID stripped for the comparison; convalidated "
+      "drives VALIDATE", n == "validated" and cat[0]["convalidated"] is True)
+
+cat = row("check ((status <> 'x')) NOT VALID", validated=False)
+n = outcome(new_guard, cat)
+print(f"  different expression + ' NOT VALID': new={n}")
+check("D2 new: a different expression still raises even with the suffix present",
+      n.startswith("raised:") and "different definition" in n)
 
 # =====================================================================
 print("== CTX04: nontransactional DDL boundary and protocol ==")

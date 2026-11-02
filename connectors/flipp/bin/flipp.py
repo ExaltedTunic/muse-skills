@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import re
+import socket
 import sys
 import time
 import urllib.error
@@ -84,6 +85,19 @@ def get(path, params, retries=1):
             raise FlippError(
                 "network_error", f"Could not reach the Flipp API: {e.reason}."
             )
+        except (TimeoutError, socket.timeout) as e:
+            # A bare socket timeout is not a URLError: urlopen raises
+            # TimeoutError (socket.timeout's modern name) unwrapped, and
+            # it must get the same retry-then-envelope treatment.
+            last_error = e
+            if attempt < retries:
+                time.sleep(1.0)
+                continue
+            raise FlippError(
+                "network_error",
+                f"Flipp API request timed out after {retries + 1} "
+                f"attempt(s): {e}.",
+            )
     try:
         data = json.loads(body)
     except json.JSONDecodeError:
@@ -119,6 +133,26 @@ def require_list(data, key, path):
             f"{type(value).__name__}, expected a list.",
         )
     return value
+
+
+def require_records(data, key, path):
+    """require_list, plus every element must be a JSON object.
+
+    A list of the wrong-shaped records (nulls, strings, numbers) is the
+    same upstream schema drift as a missing field: it must surface as
+    schema_error naming the offending index, never as an AttributeError
+    from a normalizer calling .get() on a non-dict.
+    """
+    values = require_list(data, key, path)
+    for index, value in enumerate(values):
+        if not isinstance(value, dict):
+            raise FlippError(
+                "schema_error",
+                f"Flipp API field '{key}' for {path} has a non-object "
+                f"record at index {index} ({type(value).__name__}); "
+                "the upstream schema may have changed.",
+            )
+    return values
 
 
 # ------------------------------------------------------- formatting helpers
@@ -333,13 +367,19 @@ def cmd_search(args):
     limit = check_limit(args.limit, SEARCH_CAP)
     path = "/items/search"
     data = get(path, {"q": args.query, "postal_code": postal, "locale": locale})
-    items = require_list(data, "items", path)
-    shown = [norm_search_item(i) for i in items[:limit]]
+    items = require_records(data, "items", path)
+    normalized = [norm_search_item(i) for i in items]
+    matched = normalized
     if args.merchant:
         needle = args.merchant.lower()
-        shown = [i for i in shown if needle in (i["merchant"] or "").lower()]
+        matched = [
+            i for i in normalized
+            if needle in (i["merchant"] or "").lower()
+        ]
+    shown = matched[:limit]
     coverage = {
         "returned": len(items),
+        "matched": len(matched),
         "shown": len(shown),
         "limit": limit,
         "api_cap": SEARCH_CAP,
@@ -355,10 +395,11 @@ def cmd_search(args):
         f"flyer {i['flyer_id']} | to {i['valid_to']}"
         for i in shown
     ] or ["(no matches)"]
-    if len(items) >= limit:
+    if len(matched) > len(shown):
         lines.append(
-            f"-- showing {len(shown)} of {len(items)} returned; "
-            "results are relevance-ranked, not exhaustive"
+            f"-- showing {len(shown)} of {len(matched)} matching "
+            f"({len(items)} returned); results are relevance-ranked, "
+            "not exhaustive"
         )
     emit(args, {"query": args.query, "coverage": coverage, "items": shown}, lines)
     return 0
@@ -367,7 +408,7 @@ def cmd_search(args):
 def fetch_flyers(postal, locale):
     path = "/flyers"
     data = get(path, {"postal_code": postal, "locale": locale})
-    return [norm_flyer(f) for f in require_list(data, "flyers", path)]
+    return [norm_flyer(f) for f in require_records(data, "flyers", path)]
 
 
 def cmd_flyers(args):
@@ -402,7 +443,7 @@ def cmd_flyers(args):
 def fetch_flyer_items(flyer_id, postal, locale):
     path = f"/flyers/{flyer_id}"
     data = get(path, {"postal_code": postal, "locale": locale})
-    return require_list(data, "items", path)
+    return require_records(data, "items", path)
 
 
 def cmd_flyer(args):
@@ -484,33 +525,85 @@ def cmd_scan(args):
     return 0
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Flipp deal lookup")
-    parser.add_argument("--postal", help="Canadian postal code")
-    parser.add_argument(
-        "--locale", default="en-ca", help="locale, e.g. en-ca or fr-ca"
-    )
-    parser.add_argument("--json", action="store_true", help="JSON output")
-    sub = parser.add_subparsers(dest="cmd", required=True)
+class FlippArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser whose failures honour the connector's error contract.
 
-    p = sub.add_parser("search", help="keyword search across flyers")
+    argparse normally prints a usage block and exits 2, which bypasses
+    the JSON error object CONNECTOR.md promises on stderr. Emit the same
+    {"error": "bad_args", ...} envelope as every other failure instead.
+    Subparsers inherit this class via add_subparsers' default
+    parser_class, so errors raised inside a subcommand are covered too.
+    """
+
+    def error(self, message):
+        err = bad_args(message)
+        print(
+            json.dumps({"error": err.code, "message": err.message}),
+            file=sys.stderr,
+        )
+        raise SystemExit(err.exit_code)
+
+
+def _global_options(for_subparser=False):
+    """The shared --postal/--locale/--json options, as a parents parser.
+
+    CONNECTOR.md documents the globals after the subcommand, and the
+    globals-first order must keep working too, so both the main parser
+    and every subparser carry them. A plain shared parents parser breaks
+    the globals-first order: argparse applies each subparser's defaults
+    over values the main parser already read, silently resetting a
+    leading --postal to None. The subparser copies therefore use
+    SUPPRESS defaults: they set a value only when the option actually
+    appears after the subcommand, and an occurrence there wins over one
+    given before it.
+    """
+    common = argparse.ArgumentParser(add_help=False)
+    if for_subparser:
+        common.add_argument("--postal", default=argparse.SUPPRESS,
+                            help="Canadian postal code")
+        common.add_argument("--locale", default=argparse.SUPPRESS,
+                            help="locale, e.g. en-ca or fr-ca")
+        common.add_argument("--json", action="store_true",
+                            default=argparse.SUPPRESS, help="JSON output")
+    else:
+        common.add_argument("--postal", help="Canadian postal code")
+        common.add_argument(
+            "--locale", default="en-ca", help="locale, e.g. en-ca or fr-ca"
+        )
+        common.add_argument("--json", action="store_true",
+                            help="JSON output")
+    return common
+
+
+def main():
+    parser = FlippArgumentParser(
+        description="Flipp deal lookup", parents=[_global_options()]
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub_globals = [_global_options(for_subparser=True)]
+
+    p = sub.add_parser("search", parents=sub_globals,
+                       help="keyword search across flyers")
     p.add_argument("query")
     p.add_argument("--merchant", help="filter by merchant name substring")
     p.add_argument("--limit", type=int, default=20)
     p.set_defaults(fn=cmd_search)
 
-    p = sub.add_parser("flyers", help="list current flyers")
+    p = sub.add_parser("flyers", parents=sub_globals,
+                       help="list current flyers")
     p.add_argument("--category", help="filter by category substring")
     p.add_argument("--merchant", help="filter by merchant name substring")
     p.add_argument("--limit", type=int, default=50)
     p.set_defaults(fn=cmd_flyers)
 
-    p = sub.add_parser("flyer", help="dump one flyer's items")
+    p = sub.add_parser("flyer", parents=sub_globals,
+                       help="dump one flyer's items")
     p.add_argument("flyer_id", type=int)
     p.add_argument("--limit", type=int, default=200)
     p.set_defaults(fn=cmd_flyer)
 
-    p = sub.add_parser("scan", help="bounded full-flyer scan for a query")
+    p = sub.add_parser("scan", parents=sub_globals,
+                       help="bounded full-flyer scan for a query")
     p.add_argument("query")
     p.add_argument("--merchant", help="restrict to merchant name substring")
     p.add_argument("--max-flyers", type=int, default=20)

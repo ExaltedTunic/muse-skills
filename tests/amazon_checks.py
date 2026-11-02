@@ -259,6 +259,51 @@ check("D13 records comparison track + source URLs + last-observed time",
 check("D13 unknown/approximate verdict when evidence unobtainable",
       bool(re.search(r"unknown / approximate|unknown or approximate", price_text, re.I)))
 
+# ---------------- R4: text fallback must not invent prices ----------------
+class FakeCard:
+    """A result card with no .a-price / .a-offscreen nodes at all, so
+    only the whole-card text fallback in _price_text can answer."""
+
+    def __init__(self, text):
+        self._text = text
+
+    def query_selector(self, sel):
+        return None
+
+    def query_selector_all(self, sel):
+        return []
+
+    def inner_text(self):
+        return self._text
+
+
+R4_CASES = [
+    # Promotional money text is not the product's price.
+    ("Acme Widget Deluxe\nSave $10.00 with coupon\nClimate Pledge Friendly", None),
+    # A free-delivery spending threshold is not a price either.
+    ("Acme Widget Deluxe\nFREE delivery Thursday, Nov 5 on orders over $35\n"
+     "Or fastest delivery tomorrow", None),
+    # Space-grouped amounts keep every digit: 1 299 SEK is 1299 SEK,
+    # not the trailing group on its own.
+    ("Acme Widget Deluxe\n1 299 SEK\nFri frakt", "1299 SEK"),
+    # Same with a non-breaking space as the grouping separator.
+    ("Acme Widget Deluxe\n1\u00a0299 SEK\nFri frakt", "1299 SEK"),
+    # Financing per-month text is not a price.
+    ("Acme Widget Deluxe\n$16.99/month for 6 months", None),
+    # A bare price line is still found (the fallback's legitimate case).
+    ("Acme Widget Deluxe\n$59.99\nClimate Pledge Friendly", "$59.99"),
+    # A "Price:" lead is a defensible price line too.
+    ("Acme Widget Deluxe\nPrice: $42.50\nClimate Pledge Friendly", "$42.50"),
+    # Promo text earlier in the card must not shadow the real price line.
+    ("Acme Widget Deluxe\nSave $10.00 with coupon\n$59.99", "$59.99"),
+    # No money text at all.
+    ("Acme Widget Deluxe\nClimate Pledge Friendly\nBest Seller", None),
+]
+for text, expected in R4_CASES:
+    got = mod._price_text(FakeCard(text))
+    check(f"R4 price_text {text.splitlines()[1]!r}", got == expected,
+          f"got={got!r} want={expected!r}")
+
 print()
 failed = [r for r in RESULTS if not r[1]]
 print(f"{len(RESULTS) - len(failed)}/{len(RESULTS)} checks passed")

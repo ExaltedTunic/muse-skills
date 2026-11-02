@@ -20,6 +20,14 @@ You do not need everything. Pick the one skill you want, or take the whole set.
 
 When skills overlap, the domain skill for the user's actual goal leads the task; review and verification skills supply standards inside that work rather than taking it over. Orchestration skills activate only when delegation is actually part of the work. If two skills claim the same surface (for example, search versus price-history checking, or curriculum design versus audio generation), the skill matching the actual goal leads and the other supports it.
 
+## Connectors
+
+Read-only connector bundles live under [connectors/](connectors/). A connector is plumbing, not a playbook: a documented CLI over a service's API, with its own CONNECTOR.md covering setup, the output contract and error behaviour. Install one by copying its folder into your Muse custom connectors directory under the folder name its CONNECTOR.md specifies.
+
+| Connector | What it does | Notes |
+|---|---|---|
+| [flipp](connectors/flipp/) | Search current Canadian store flyer deals, list flyers, read a flyer, and run a bounded full-flyer scan through Flipp's public keyless backend. Search results carry coverage metadata and a deterministic price-per-kg where the unit allows; upstream schema drift fails loudly instead of returning empty results. | No account or key; unofficial API; postal code is supplied per call, never stored in the bundle |
+
 ## Verification
 
 The collection's regression checks live in [tests/](tests/) and run with the Python standard library alone: `python3 tests/run_all.py`. They cover the bundled scripts and the migration recipes with synthetic fixtures, and CI runs them on every push. The "Last verified" line in a playbook records the most recent live verification behind its claims.

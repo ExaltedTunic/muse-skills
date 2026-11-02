@@ -20,6 +20,7 @@ SUITES = [
     "migration_models.py",
     "smite_checks.py",
     "amazon_checks.py",
+    "flipp_checks.py",
 ]
 
 

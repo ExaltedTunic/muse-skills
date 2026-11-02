@@ -213,6 +213,15 @@ def primary_role(builds):
 # so a network hiccup cannot poison later runs.
 _TIER_CACHE_PATH = "/tmp/smite2_item_tiers.json"
 
+# The tier vocabulary SmiteBrain emits. Only "Tier 3" is a completed
+# item; "Tier 1"/"Tier 2" are components. Anything else a page, a
+# cache file or a future patch produces (unknown labels, empty
+# strings, numbers) is not evidence about the item at all: the item
+# is unverified, never silently counted as completed.
+KNOWN_TIERS = frozenset({"Tier 1", "Tier 2", "Tier 3"})
+COMPLETED_TIER = "Tier 3"
+COMPONENT_TIERS = frozenset({"Tier 1", "Tier 2"})
+
 # The patch label the in-memory tier cache belongs to. main() sets it
 # via set_current_patch() before any tier lookup; other entry points
 # leave it None, in which case the disk cache is never trusted.
@@ -241,7 +250,8 @@ def _load_tier_cache():
     tiers = data.get("tiers")
     if not isinstance(tiers, dict):
         return {}
-    return {str(k): v for k, v in tiers.items() if isinstance(v, str)}
+    return {str(k): v for k, v in tiers.items()
+            if isinstance(v, str) and v in KNOWN_TIERS}
 
 
 def _save_tier_cache():
@@ -277,6 +287,8 @@ def item_tier(slug):
                     tier = decoded["item"].get("tier")
                     break
     except Exception:
+        tier = None
+    if not isinstance(tier, str) or tier not in KNOWN_TIERS:
         tier = None
     _TIER_CACHE[slug] = tier
     if tier is not None:
@@ -368,20 +380,22 @@ def aggregate(builds, role):
     # Tier 1/2 components show up in final builds (e.g. a Skeggox that
     # never got completed). A recommended build is made of completed
     # Tier 3 items only: known components are dropped entirely, and an
-    # item whose tier cannot be determined is unverified, not
-    # completed. Components and unverified items never enter the core
-    # or the flex; if fewer than six verified completed items exist,
-    # the build is incomplete and is reported as such, never padded.
+    # item whose tier is anything other than the completed tier (not
+    # determined, or a value outside the known tier vocabulary) is
+    # unverified, not completed. Components and unverified items never
+    # enter the core or the flex; if fewer than six verified completed
+    # items exist, the build is incomplete and is reported as such,
+    # never padded.
     completed = []
     unverified = []
     for v in ordered:
         tier = item_tier(v["slug"])
-        if tier in ("Tier 1", "Tier 2"):
+        if tier in COMPONENT_TIERS:
             continue
-        if tier is None:
-            unverified.append(v)
-        else:
+        if tier == COMPLETED_TIER:
             completed.append(v)
+        else:
+            unverified.append(v)
     core = sorted(completed[:6], key=lambda v: v["avg_slot"])
     flex = completed[6:9]
     missing = 6 - len(core)
@@ -406,6 +420,42 @@ def god_title(name: str) -> str:
     give "Da-Ji" and "Chang'E")."""
     cleaned = name.strip().lower().replace("-", " ")
     return cleaned.title().replace("'E", "'e").replace("'S", "'s")
+
+
+def _object_spans(text):
+    """(start, end) spans of every balanced {...} region in text,
+    ignoring braces inside string literals."""
+    spans = []
+    stack = []
+    in_str = False
+    escaped = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            stack.append(i)
+        elif ch == "}" and stack:
+            spans.append((stack.pop(), i + 1))
+    return spans
+
+
+def _enclosing_block(spans, pos):
+    """The smallest balanced {...} span containing pos: the one build
+    object the position belongs to, never a neighbouring build."""
+    best = None
+    for start, end in spans:
+        if start <= pos < end and (best is None
+                                   or end - start < best[1] - best[0]):
+            best = (start, end)
+    return best
 
 
 def fetch_skills(god_display, role):
@@ -450,29 +500,46 @@ def fetch_skills(god_display, role):
     text = html.replace('\\"', '"').replace("\\\\", "\\")
     matches = list(re.finditer(r'"abilityLevelOrder":\[([0-9,]+)\]', text))
     records = []
+    spans = _object_spans(text)
 
     def _pick(pattern, before, after):
-        """A record's fields sit with its own abilityLevelOrder, so pair
-        from the segment between neighbouring orders, preferring the
-        values just before this order. A bare window around the match
-        can reach into a neighbouring build and pair its roles or score
-        with this build's order."""
+        """Fallback pairing for a payload whose build objects cannot
+        be delimited: pair from the segment between neighbouring
+        orders, preferring the values just before this order."""
         found = re.findall(pattern, before)
         if found:
             return found[-1]
         found = re.findall(pattern, after)
         return found[0] if found else None
 
+    def _in_block(pattern, block):
+        found = re.search(pattern, block)
+        return found.group(1) if found else None
+
     for i, m in enumerate(matches):
-        seg_start = matches[i - 1].end() if i else max(0, m.start() - 4000)
-        seg_end = (matches[i + 1].start() if i + 1 < len(matches)
-                   else m.end() + 4000)
-        before, after = text[seg_start:m.start()], text[m.end():seg_end]
-        roles_raw = _pick(r'"roles":\[([^\]]*)\]', before, after)
+        # A record's fields are read from its own build object only:
+        # the smallest balanced {...} block enclosing this order.
+        # Segment pairing across neighbouring orders mispairs whenever
+        # a build lists abilityLevelOrder before its roles, because the
+        # previous build's roles then sit "before" this build's order.
+        span = _enclosing_block(spans, m.start())
+        if span is not None:
+            block = text[span[0]:span[1]]
+            roles_raw = _in_block(r'"roles":\[([^\]]*)\]', block)
+            score = _in_block(r'"matchScore":(\d+)', block)
+            title = _in_block(r'"title":"([^"]{1,60})"', block)
+        else:
+            seg_start = (matches[i - 1].end() if i
+                         else max(0, m.start() - 4000))
+            seg_end = (matches[i + 1].start() if i + 1 < len(matches)
+                       else m.end() + 4000)
+            before = text[seg_start:m.start()]
+            after = text[m.end():seg_end]
+            roles_raw = _pick(r'"roles":\[([^\]]*)\]', before, after)
+            score = _pick(r'"matchScore":(\d+)', before, after)
+            title = _pick(r'"title":"([^"]{1,60})"', before, after)
         roles = (re.findall(r'"([A-Za-z ]+)"', roles_raw)
                  if roles_raw else [])
-        score = _pick(r'"matchScore":(\d+)', before, after)
-        title = _pick(r'"title":"([^"]{1,60})"', before, after)
         order = [int(x) for x in m.group(1).split(",") if x]
         if len(order) >= 10:
             records.append({
